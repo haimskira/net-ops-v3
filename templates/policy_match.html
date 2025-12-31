@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <style>
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Regular.ttf') }}") format('truetype');
+            font-weight: 400;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Bold.ttf') }}") format('truetype');
+            font-weight: 700;
+            font-style: normal;
+        }
+        body { font-family: 'Assistant', sans-serif !important; }
+    </style>
+
+    
+    <style>
+        body { font-family: 'Assistant', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        
+        .spinner-custom { 
+            border-top-color: transparent !important; 
+            animation: rot 1s linear infinite; 
+        }
+        @keyframes rot { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        input, select { 
+            background-color: #1e293b !important; 
+            border: 1px solid #334155 !important; 
+            color: #f1f5f9 !important;
+            transition: all 0.2s ease-in-out;
+        }
+        input:focus, select:focus { 
+            border-color: #6366f1 !important;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+            outline: none;
+        }
+        
+        .result-card {
+            animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="p-6 overflow-x-hidden">
+    <div class="max-w-3xl mx-auto bg-slate-800/40 border border-slate-700 rounded-3xl p-8 shadow-2xl backdrop-blur-md border border-white/5">
+        
+        <div class="flex items-center justify-between mb-8 border-b border-slate-700 pb-5">
+            <div class="flex items-center gap-3">
+                <div class="bg-indigo-500/20 text-indigo-400 p-2 rounded-xl shadow-[0_0_20px_rgba(99,102,241,0.15)]">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-100 tracking-tight">Security Policy Match Tester</h2>
+            </div>
+
+            <div id="loading-indicator" class="flex items-center gap-3 bg-slate-900/80 px-4 py-2 rounded-full border border-indigo-500/30">
+                <div class="spinner-custom w-4 h-4 border-2 border-indigo-400 rounded-full"></div>
+                <span class="text-xs font-medium text-slate-300">טוען נתונים מהפיירוול...</span>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="space-y-2">
+                <label class="block text-sm font-bold text-slate-400 mr-1">From Zone</label>
+                <select id="from_zone" class="w-full p-3 rounded-xl outline-none"></select>
+            </div>
+            <div class="space-y-2">
+                <label class="block text-sm font-bold text-slate-400 mr-1">To Zone</label>
+                <select id="to_zone" class="w-full p-3 rounded-xl outline-none"></select>
+            </div>
+            <div class="space-y-2">
+                <label class="block text-sm font-bold text-slate-400 mr-1">Source IP</label>
+                <input type="text" id="source_ip" placeholder="e.g. 10.0.0.1" class="w-full p-3 rounded-xl outline-none">
+            </div>
+            <div class="space-y-2">
+                <label class="block text-sm font-bold text-slate-400 mr-1">Destination IP</label>
+                <input type="text" id="destination_ip" placeholder="e.g. 8.8.8.8" class="w-full p-3 rounded-xl outline-none">
+            </div>
+            <div class="space-y-2">
+                <label class="block text-sm font-bold text-slate-400 mr-1">Protocol</label>
+                <select id="protocol" class="w-full p-3 rounded-xl outline-none">
+                    <option value="6">TCP (6)</option>
+                    <option value="17">UDP (17)</option>
+                    <option value="1">ICMP (1)</option>
+                </select>
+            </div>
+            <div class="space-y-2">
+                <label class="block text-sm font-bold text-slate-400 mr-1">Destination Port</label>
+                <input type="text" id="port" value="443" class="w-full p-3 rounded-xl outline-none">
+            </div>
+        </div>
+
+        <button id="run-btn" onclick="runMatch()" class="w-full mt-10 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-900/20 transition-all transform active:scale-[0.97] flex items-center justify-center gap-2">
+            <span>Run Diagnostic Match</span>
+        </button>
+
+        <div id="result-box" class="mt-8 hidden p-6 rounded-2xl border transition-all result-card">
+            <h3 class="text-xl font-bold mb-4 flex items-center gap-2" id="res-header"></h3>
+            <div id="res-content" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-right"></div>
+        </div>
+    </div>
+
+    <script>
+        async function loadZones() {
+            try {
+                const res = await fetch('/get-params');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const fromEl = document.getElementById('from_zone');
+                    const toEl = document.getElementById('to_zone');
+                    
+                    // ניקוי קודם
+                    fromEl.innerHTML = ''; toEl.innerHTML = '';
+                    
+                    data.zones.forEach(z => {
+                        fromEl.add(new Option(z, z));
+                        toEl.add(new Option(z, z));
+                    });
+                    document.getElementById('loading-indicator').classList.add('hidden');
+                }
+            } catch (e) { 
+                console.error("Error loading data", e);
+                document.getElementById('loading-indicator').innerHTML = '<span class="text-xs text-rose-400">שגיאה בחיבור לשרת</span>';
+            }
+        }
+
+        async function runMatch() {
+            const btn = document.getElementById('run-btn');
+            const resultBox = document.getElementById('result-box');
+            
+            // איפוס והכנה
+            btn.disabled = true;
+            btn.innerHTML = `<div class="spinner-custom w-5 h-5 border-2 border-white rounded-full"></div> בודק חוקה...`;
+            resultBox.classList.add('hidden');
+
+            const payload = {
+                from_zone: document.getElementById('from_zone').value.trim(),
+                to_zone: document.getElementById('to_zone').value.trim(),
+                source_ip: document.getElementById('source_ip').value.trim(),
+                destination_ip: document.getElementById('destination_ip').value.trim(),
+                protocol: document.getElementById('protocol').value,
+                port: document.getElementById('port').value.trim()
+            };
+
+            // ולידציה בסיסית
+            if(!payload.source_ip || !payload.destination_ip) {
+                alert("נא להזין כתובות IP");
+                btn.disabled = false;
+                btn.innerText = "Run Diagnostic Match";
+                return;
+            }
+
+            try {
+                const res = await fetch('/run-policy-match', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await res.json();
+                resultBox.classList.remove('hidden');
+                
+                const header = document.getElementById('res-header');
+                const content = document.getElementById('res-content');
+
+                if (data.status === 'success' && data.match) {
+                    resultBox.className = "mt-8 p-6 rounded-2xl border-emerald-500/30 bg-emerald-500/5 shadow-[0_0_30px_rgba(16,185,129,0.1)] block result-card";
+                    header.className = "text-xl font-bold mb-4 text-emerald-400";
+                    header.innerHTML = `<span>✅</span> Result: Match Found`;
+                    content.innerHTML = `
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700/50"><strong class="text-slate-500 block text-xs uppercase mb-1">Rule Name</strong> <span class="text-indigo-400 font-bold">${data.rule_name}</span></div>
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700/50"><strong class="text-slate-500 block text-xs uppercase mb-1">Action</strong> <span class="${data.action === 'allow' ? 'text-emerald-400' : 'text-rose-400'} font-bold">${data.action.toUpperCase()}</span></div>
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700/50"><strong class="text-slate-500 block text-xs uppercase mb-1">Source</strong> ${data.source}</div>
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700/50"><strong class="text-slate-500 block text-xs uppercase mb-1">Destination</strong> ${data.destination}</div>
+                    `;
+                } else if (data.status === 'success' && !data.match) {
+                    resultBox.className = "mt-8 p-6 rounded-2xl border-rose-500/30 bg-rose-500/5 shadow-[0_0_30px_rgba(244,63,94,0.1)] block result-card";
+                    header.className = "text-xl font-bold mb-4 text-rose-400 text-center";
+                    header.innerHTML = `<span>❌</span> No Match Found`;
+                    content.innerHTML = `<p class="col-span-2 text-slate-400 p-2 text-center">התעבורה אינה תואמת לאף חוק אבטחה קיים. היא תיחסם על ידי חוק ה-Implicit Deny.</p>`;
+                } else {
+                    throw new Error(data.message || "שגיאה בבדיקת החוקה");
+                }
+            } catch (e) {
+                alert("שגיאה: " + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Run Diagnostic Match";
+            }
+        }
+
+        window.onload = loadZones;
+    </script>
+</body>
+</html>

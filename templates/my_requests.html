@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>NetOps - My Rule Requests</title>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <style>
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Regular.ttf') }}") format('truetype');
+            font-weight: 400;
+        }
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Bold.ttf') }}") format('truetype');
+            font-weight: 700;
+        }
+
+        body { 
+            font-family: 'Assistant', sans-serif !important; 
+            background-color: #0f172a; 
+            color: #f8fafc; 
+            padding: 20px;
+        }
+        
+        .glass-card {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .status-pill { 
+            padding: 4px 12px; 
+            border-radius: 9999px; 
+            font-size: 0.75rem; 
+            font-weight: 700;
+            border: 1px solid transparent;
+        }
+
+        .status-pending { color: #fbbf24; background: rgba(251, 191, 36, 0.1); border-color: rgba(251, 191, 36, 0.2); }
+        .status-approved { color: #10b981; background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.2); }
+        .status-rejected { color: #ef4444; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); }
+
+        .admin-note-box {
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(99, 102, 241, 0.05);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="max-w-5xl mx-auto">
+        <div class="flex justify-between items-center mb-8 glass-card p-6 rounded-3xl border border-slate-700/50 shadow-2xl">
+            <div>
+                <h1 class="text-2xl font-bold text-indigo-400 flex items-center gap-2">
+                    <span>📜</span> תור הבקשות שלי (Rules)
+                </h1>
+                <p class="text-slate-500 text-sm mt-1 italic">סטטוס אישורי חוקי פיירוול בזמן אמת</p>
+            </div>
+            <button onclick="loadRequests()" class="bg-slate-800 p-3 rounded-full hover:bg-slate-700 transition-all shadow-lg" title="רענן נתונים">
+                🔄
+            </button>
+        </div>
+
+        <div id="requests-list" class="space-y-4">
+            <div class="text-center py-20 opacity-50">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-indigo-500 mb-4"></div>
+                <p class="text-sm">מושך נתונים מהשרת...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * טעינת בקשות החוקה מהשרת.
+         */
+        async function loadRequests() {
+            try {
+                // הוספת timestamp למניעת Cache
+                const res = await fetch(`/get-my-requests?t=${Date.now()}`);
+                const data = await res.json();
+                const container = document.getElementById('requests-list');
+                
+                if (!data || data.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-20 border-2 border-dashed border-slate-800 rounded-3xl">
+                            <p class="text-slate-500 italic">לא נמצאו בקשות חוקה המשויכות אליך.</p>
+                            <button onclick="window.parent.toggleComponent('palo-alto')" 
+                                    class="mt-4 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 px-6 py-2 rounded-xl font-bold transition-all border border-indigo-500/30">
+                                צור חוקה חדשה עכשיו ➔
+                            </button>
+                        </div>`;
+                    return;
+                }
+
+                container.innerHTML = data.map(r => {
+                    const status = (r.status || 'Pending').toLowerCase();
+                    const sClass = `status-${status}`;
+                    let sText = "ממתין לבדיקה";
+                    let icon = "⏳";
+
+                    if (status === 'approved') { sText = "בוצע בפיירוול"; icon = "✅"; }
+                    else if (status === 'rejected') { sText = "נדחה"; icon = "❌"; }
+
+                    return `
+                        <div class="glass-card p-6 rounded-2xl transition-all hover:bg-slate-800/40 border border-slate-700/30">
+                            <div class="flex justify-between items-start">
+                                <div class="flex items-start gap-4">
+                                    <span class="text-3xl mt-1">${icon}</span>
+                                    <div>
+                                        <p class="font-bold text-slate-100 text-lg mb-1">${r.rule_name}</p>
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-1">
+                                            <p class="text-xs text-slate-400 font-mono">
+                                                <span class="text-indigo-400 font-bold">SOURCE:</span> ${r.source_ip || r.source}
+                                            </p>
+                                            <p class="text-xs text-slate-400 font-mono">
+                                                <span class="text-indigo-400 font-bold">DEST:</span> ${r.destination_ip || r.destination}
+                                            </p>
+                                            <p class="text-xs text-slate-300 font-bold">
+                                                <span class="text-indigo-400 font-bold">PORT:</span> ${r.service_port}/${r.protocol || 'tcp'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-left flex flex-col items-end">
+                                    <span class="status-pill ${sClass}">
+                                        ${sText}
+                                    </span>
+                                    <p class="text-[10px] text-slate-500 mt-4 font-mono">${r.time || ''}</p>
+                                </div>
+                            </div>
+
+                            ${r.admin_notes ? `
+                                <div class="admin-note-box flex gap-3 items-start">
+                                    <span class="text-xs">💬</span>
+                                    <div>
+                                        <p class="text-[10px] text-indigo-400 font-bold uppercase">הערת מנהל</p>
+                                        <p class="text-sm text-slate-300 italic leading-relaxed">${r.admin_notes}</p>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error("Error loading requests:", e);
+                document.getElementById('requests-list').innerHTML = 
+                    '<div class="p-6 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-400 text-center font-bold">⚠️ תקלה בתקשורת עם שרת הניהול</div>';
+            }
+        }
+        
+        loadRequests();
+        setInterval(loadRequests, 15000); // רענון כל 15 שניות
+    </script>
+</body>
+</html>

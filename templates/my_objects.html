@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetOps - My Objects Status</title>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
+    <style>
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Regular.ttf') }}") format('truetype');
+            font-weight: 400;
+        }
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Bold.ttf') }}") format('truetype');
+            font-weight: 700;
+        }
+
+        body { 
+            font-family: 'Assistant', sans-serif !important; 
+            background-color: #0f172a; 
+            color: #f8fafc; 
+            padding: 20px;
+            margin: 0;
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .obj-card { transition: transform 0.2s ease; }
+        .obj-card:hover { transform: translateY(-2px); background: rgba(30, 41, 59, 0.8); }
+        
+        .status-badge { padding: 4px 14px; border-radius: 999px; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; }
+        .status-pending { color: #fbbf24; background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); }
+        .status-approved { color: #10b981; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .status-rejected { color: #ef4444; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); }
+
+        .member-pill { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; padding: 2px 8px; border-radius: 6px; font-size: 10px; border: 1px solid rgba(99, 102, 241, 0.3); margin: 2px; display: inline-block; }
+    </style>
+</head>
+<body>
+    <div class="mb-8 glass-card p-6 rounded-3xl border border-slate-700/50 shadow-2xl flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-indigo-400">📂 המכולה שלי: סטטוס אובייקטים</h1>
+            <p class="text-slate-500 text-sm mt-1">מעקב אחר בקשות תשתית שנשלחו</p>
+        </div>
+        <div id="refresh-indicator" class="flex items-center gap-2 bg-slate-900/50 px-4 py-2 rounded-full border border-slate-700">
+            <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Auto Sync</span>
+        </div>
+    </div>
+
+    <div id="my-objects-container" class="space-y-4 max-w-5xl mx-auto">
+        <div id="initial-loader" class="text-center py-20">
+            <div class="inline-block animate-spin rounded-full h-10 w-10 border-t-2 border-indigo-500"></div>
+        </div>
+    </div>
+
+    <script>
+        let lastDataHash = ""; 
+        let isFirstLoad = true;
+
+        async function fetchMyObjects() {
+            try {
+                const res = await fetch(`/get-my-objects?t=${Date.now()}`);
+                const data = await res.json();
+                const currentHash = JSON.stringify(data);
+                
+                if (currentHash !== lastDataHash) {
+                    renderUI(data);
+                    lastDataHash = currentHash;
+                }
+            } catch (e) { console.error("Fetch error:", e); }
+            finally {
+                if (isFirstLoad) {
+                    const loader = document.getElementById('initial-loader');
+                    if (loader) loader.remove();
+                    isFirstLoad = false;
+                }
+            }
+        }
+
+        function renderUI(objects) {
+            const container = document.getElementById('my-objects-container');
+            
+            if (!objects || objects.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-16 border-2 border-dashed border-slate-800 rounded-3xl">
+                        <p class="text-slate-500 italic mb-4">טרם שלחת בקשות ליצירת אובייקטים.</p>
+                        <button onclick="window.parent.toggleComponent('object-creator')" 
+                                class="bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 px-6 py-2 rounded-xl font-bold transition-all border border-indigo-500/30">
+                            צור אובייקט חדש עכשיו ➔
+                        </button>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = objects.map(o => {
+                const type = (o.obj_type || o.type || 'address').toLowerCase();
+                const status = (o.status || 'Pending').toLowerCase();
+                
+                // טיפול בערך - אם זו קבוצה, נציג חברים
+                let valueContent = "";
+                if (type.includes('group')) {
+                    const members = o.value ? o.value.split(',') : [];
+                    valueContent = members.map(m => `<span class="member-pill">${m.trim()}</span>`).join('');
+                } else {
+                    valueContent = `<span class="text-indigo-300 font-mono">${o.value || 'N/A'}</span>`;
+                    if (type === 'address' && o.prefix && o.prefix !== '32') valueContent += `<span class="text-slate-500">/${o.prefix}</span>`;
+                }
+
+                let icon = status === 'approved' ? '✅' : status === 'rejected' ? '❌' : '⏳';
+                let label = status === 'approved' ? 'אושר' : status === 'rejected' ? 'נדחה' : 'ממתין';
+
+                return `
+                    <div class="obj-card glass-card p-5 rounded-2xl border border-slate-700/30">
+                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-3 mb-1">
+                                    <span class="text-[10px] font-bold bg-slate-700 text-slate-300 px-2 py-0.5 rounded uppercase">${type.replace('-', ' ')}</span>
+                                    <p class="font-bold text-slate-100 font-mono">${o.name}</p>
+                                </div>
+                                <div class="mt-2 flex items-baseline gap-2">
+                                    <span class="text-slate-500 text-xs italic">ערך:</span>
+                                    <div>${valueContent}</div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                ${o.protocol ? `<span class="text-[10px] font-bold text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded">${o.protocol.toUpperCase()}</span>` : ''}
+                                <span class="status-badge status-${status}">${icon} ${label}</span>
+                            </div>
+                        </div>
+                        ${o.admin_notes ? `
+                            <div class="mt-4 p-3 bg-indigo-500/5 border-r-2 border-indigo-500/30 rounded-l-xl">
+                                <p class="text-[10px] text-indigo-400 font-bold uppercase">הערת מנהל</p>
+                                <p class="text-sm text-slate-300 italic">${o.admin_notes}</p>
+                            </div>` : ''}
+                    </div>`;
+            }).join('');
+        }
+
+        fetchMyObjects();
+        setInterval(fetchMyObjects, 5000); 
+    </script>
+</body>
+</html>

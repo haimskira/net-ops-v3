@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <style>
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Regular.ttf') }}") format('truetype');
+            font-weight: 400;
+        }
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Bold.ttf') }}") format('truetype');
+            font-weight: 700;
+        }
+        body { font-family: 'Assistant', sans-serif !important; background-color: #0f172a; color: #f8fafc; padding: 20px; margin: 0; }
+
+        /* עיצוב שורת לוג וכרטיסים */
+        .rule-card { transition: all 0.3s ease; border: 1px solid #334155; }
+        .rule-approved { border-color: #10b981 !important; background: rgba(16, 185, 129, 0.05) !important; }
+        .rule-rejected { border-color: #ef4444 !important; background: rgba(239, 68, 68, 0.05) !important; }
+        
+        .modal { backdrop-filter: blur(8px); background-color: rgba(15, 23, 42, 0.8); z-index: 100; }
+        select, input, textarea { background-color: #1e293b !important; color: white !important; border: 1px solid #334155 !important; }
+        
+        /* אנימציות */
+        .pop-in { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes popIn { 0% { opacity: 0; transform: scale(0.9) translateY(20px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
+
+        .shake { animation: shake 0.4s ease-in-out; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+        /* מערכת Toast פנימית */
+/* מערכת Toast פנימית - מתוקן */
+#toast-container { 
+    position: fixed; 
+    bottom: 24px; 
+    left: 24px; 
+    z-index: 200; 
+    display: flex; 
+    flex-direction: column; 
+    gap: 10px; 
+}
+.toast { 
+    padding: 12px 24px; 
+    border-radius: 12px; /* תיקון: border-radius במקום rounded-xl */
+    font-weight: bold; 
+    font-size: 14px; 
+    animation: slideIn 0.3s ease-out; 
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); 
+    border: 1px solid rgba(255,255,255,0.1); 
+    color: white;
+}
+@keyframes slideIn { 
+    from { transform: translateX(-100%); opacity: 0; } 
+    to { transform: translateX(0); opacity: 1; } 
+}
+
+        /* עיצוב צ'קבוקס */
+        .custom-checkbox {
+            appearance: none; background-color: #1e293b; width: 1.25em; height: 1.25em; border: 2px solid #6366f1; border-radius: 0.25em; cursor: pointer; display: grid; place-content: center;
+        }
+        .custom-checkbox:checked { background-color: #6366f1; }
+        .custom-checkbox:checked::before { content: "✔"; color: white; font-size: 0.7rem; }
+    </style>
+</head>
+<body>
+
+    <div class="flex justify-between items-center mb-6 bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl sticky top-0 z-40">
+        <div>
+            <h1 class="text-2xl font-bold text-indigo-400">ניהול תור חוקות</h1>
+            <p class="text-slate-500 text-sm">אישור, עריכה ומעקב אחר בקשות</p>
+        </div>
+        
+        <div class="flex gap-4 items-center">
+            <div id="bulk-toolbar" class="hidden items-center gap-3 bg-slate-800 px-4 py-2 rounded-xl border border-slate-700">
+                <span id="selected-count" class="text-white font-bold text-sm ml-2">0 נבחרו</span>
+                <button onclick="bulkReject()" class="text-rose-400 border border-rose-600/30 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-rose-600 hover:text-white transition-colors">דחה מסומנים</button>
+                <button onclick="bulkApprove()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-lg">אשר מסומנים</button>
+            </div>
+            <div class="h-8 w-px bg-slate-700 mx-2"></div>
+            <button onclick="commitAll()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-xl font-bold transition-all shadow-lg active:scale-95 text-sm">בצע COMMIT סופי</button>
+        </div>
+    </div>
+
+    <div id="pending-container" class="space-y-4 pb-20"></div>
+
+    <div id="confirmModal" class="hidden fixed inset-0 flex items-center justify-center p-4 modal">
+        <div class="bg-slate-900 border border-emerald-500/30 p-8 rounded-3xl w-full max-w-sm shadow-2xl text-center pop-in relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-emerald-500 to-green-600"></div>
+            <div class="mx-auto w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mb-4"><span class="text-3xl">🛡️</span></div>
+            <h3 class="text-2xl font-bold text-white mb-2">אישור חוקות</h3>
+            <p id="confirmMessage" class="text-slate-400 text-sm mb-8 px-4">החוקות ייווצרו בפיירוול באופן מיידי.</p>
+            <div class="flex gap-3 justify-center">
+                <button onclick="closeConfirmModal()" class="px-6 py-2.5 rounded-xl text-slate-400 hover:bg-slate-800 transition-all font-bold text-sm">ביטול</button>
+                <button onclick="executeBulkApprove()" class="px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-bold shadow-lg text-sm hover:scale-105 transition-transform">כן, אשר חוקות</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="editModal" class="hidden fixed inset-0 flex items-center justify-center modal p-4">
+        <div class="bg-slate-900 border border-slate-700 w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden pop-in">
+            <div class="p-6 border-b border-slate-800 bg-indigo-600/10 flex justify-between items-center"><h2 class="text-xl font-bold text-indigo-400">עריכת פרטי חוקה</h2></div>
+            <div class="p-8 grid grid-cols-1 md:grid-cols-2 gap-6" id="editForm">
+                <input type="hidden" id="edit_id">
+                <div class="md:col-span-2 space-y-1"><label class="text-xs text-slate-500 font-bold">שם חוקה</label><input id="edit_rule_name" class="w-full p-2.5 rounded-xl outline-none"></div>
+                <div class="space-y-1"><label class="text-xs text-slate-500 font-bold">From Zone</label><select id="edit_from_zone" class="w-full p-2.5 rounded-xl"></select></div>
+                <div class="space-y-1"><label class="text-xs text-slate-500 font-bold">To Zone</label><select id="edit_to_zone" class="w-full p-2.5 rounded-xl"></select></div>
+                <div class="space-y-1"><label class="text-xs text-slate-500 font-bold">Source IP</label><select id="edit_source_ip" class="w-full p-2.5 rounded-xl"></select></div>
+                <div class="space-y-1"><label class="text-xs text-slate-500 font-bold">Destination IP</label><select id="edit_destination_ip" class="w-full p-2.5 rounded-xl"></select></div>
+                <div class="space-y-1"><label class="text-xs text-indigo-400 font-bold">Application</label><input list="modal_app_list" id="edit_app" class="w-full p-2.5 rounded-xl"><datalist id="modal_app_list"></datalist></div>
+                <div class="space-y-1"><label class="text-xs text-slate-500 font-bold">Service / Port</label><select id="edit_port" class="w-full p-2.5 rounded-xl"></select></div>
+            </div>
+            <div class="p-6 bg-slate-900/50 flex justify-end gap-3 border-t border-slate-800">
+                <button onclick="closeEdit()" class="px-6 py-2 rounded-xl text-slate-400 hover:bg-slate-800 font-bold text-sm">ביטול</button>
+                <button onclick="saveEdit()" class="px-8 py-2 rounded-xl bg-indigo-600 text-white font-bold shadow-lg text-sm">שמור עדכון</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="rejectModal" class="hidden fixed inset-0 flex items-center justify-center p-4 modal">
+        <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-full max-w-md shadow-2xl pop-in">
+            <h3 class="text-xl font-bold text-rose-400 mb-4">דחיית בקשה</h3>
+            <textarea id="rejectReason" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-4 text-white mb-4 h-32 outline-none" placeholder="למה הבקשה נדחית?"></textarea>
+            <div id="reject-error" class="hidden text-rose-500 text-xs mb-4 font-bold">חובה לציין סיבה לדחייה</div>
+            <div class="flex justify-end gap-3">
+                <button onclick="closeRejectModal()" class="text-slate-400 hover:text-white px-4 py-2 font-bold">ביטול</button>
+                <button id="confirmRejectBtn" class="bg-rose-600 hover:bg-rose-500 text-white px-6 py-2 rounded-xl font-bold transition-all">אשר דחייה</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script>
+        let allRules = []; let firewallParams = null; let isFetchingParams = false;
+        let selectedRules = new Set(); let ruleIdToReject = null; 
+
+        window.onload = function() { loadRules(); fetchFirewallParams(); };
+
+        // פונקציית Toast במקום Alert
+        function showToast(msg, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`;
+            toast.innerText = msg;
+            container.appendChild(toast);
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
+        }
+
+        async function loadRules() {
+            try {
+                const res = await fetch('/get-admin-view-rules');
+                allRules = await res.json();
+                const pendingCount = allRules.filter(r => r.status === 'Pending').length;
+                window.parent.postMessage({ type: 'UPDATE_COUNTER', source: 'rules', count: pendingCount }, '*');
+                renderUI(allRules);
+            } catch (e) { showToast("שגיאה בטעינת נתונים", 'error'); }
+        }
+
+        function toggleSelection(id) {
+            if (selectedRules.has(id)) selectedRules.delete(id); else selectedRules.add(id);
+            updateBulkToolbar();
+        }
+
+        function updateBulkToolbar() {
+            const toolbar = document.getElementById('bulk-toolbar');
+            const countSpan = document.getElementById('selected-count');
+            if (selectedRules.size > 0) { toolbar.classList.remove('hidden'); toolbar.classList.add('flex'); countSpan.innerText = `${selectedRules.size} נבחרו`; }
+            else { toolbar.classList.add('hidden'); toolbar.classList.remove('flex'); }
+        }
+
+        function renderUI(rules) {
+            const container = document.getElementById('pending-container');
+            if (!rules || rules.length === 0) { container.innerHTML = '<p class="text-slate-500 text-center py-10 italic">אין חוקות להצגה.</p>'; return; }
+            
+            container.innerHTML = rules.map(r => {
+                const isPending = r.status === 'Pending';
+                let statusClass = r.status === 'Approved' ? "rule-approved shadow-[0_0_15px_rgba(16,185,129,0.1)]" : r.status === 'Rejected' ? "rule-rejected" : "border-slate-700";
+                let statusBadge = r.status === 'Approved' ? '<span class="text-emerald-500 text-xs font-bold bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">אושר ✔</span>' : r.status === 'Rejected' ? '<span class="text-rose-500 text-xs font-bold bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">נדחה ✘</span>' : '<span class="text-orange-400 text-xs font-bold bg-orange-400/10 px-3 py-1 rounded-full border border-orange-400/20">ממתין ⏳</span>';
+                
+                return `
+                <div class="rule-card bg-slate-800/40 p-5 rounded-2xl flex justify-between items-center ${statusClass}">
+                    <div class="ml-4 flex items-center justify-center">
+                        ${isPending ? `<input type="checkbox" class="custom-checkbox" onchange="toggleSelection(${r.id})" ${selectedRules.has(r.id) ? 'checked' : ''}>` : '<div class="w-5"></div>'}
+                    </div>
+                    <div class="grid grid-cols-6 gap-4 flex-1 text-right text-sm items-center">
+                        <div class="border-l border-slate-700/50 pl-2"><p class="text-slate-500 text-[10px] mb-1 italic">מבקש</p><p class="font-bold text-slate-200 truncate">${r.requested_by || 'מערכת'}</p></div>
+                        <div><p class="text-slate-500 text-[10px] mb-1">חוקה</p><p class="text-indigo-400 text-xs font-bold truncate">${r.rule_name}</p></div>
+                        <div><p class="text-slate-500 text-[10px] mb-1">Source</p><p class="text-slate-300 font-mono text-xs">${r.source_ip}</p></div>
+                        <div><p class="text-slate-500 text-[10px] mb-1">Dest</p><p class="text-slate-300 font-mono text-xs">${r.destination_ip}</p></div>
+                        <div><p class="text-slate-500 text-[10px] mb-1">App/Port</p><p class="text-slate-300 font-mono text-xs">${r.application} / ${r.service_port}</p></div>
+                        <div class="flex flex-col items-center gap-1">${statusBadge}</div>
+                    </div>
+                    <div class="flex gap-2 mr-6 min-w-[160px] justify-end">
+                        ${isPending ? `
+                            <button onclick="openEdit(${r.id})" class="bg-slate-700 p-2 rounded-xl hover:bg-indigo-600 transition-all" title="ערוך">📝</button>
+                            <button onclick="openRejectModal(${r.id})" class="text-rose-400 border border-rose-600/30 px-3 py-2 rounded-xl text-[11px] font-bold hover:bg-rose-600 hover:text-white transition-colors">דחייה</button>
+                            <button onclick="handleAction('approve', ${r.id}, false)" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-[11px] font-bold shadow-lg shadow-emerald-900/20">אישור</button>
+                        ` : `<p class="text-[10px] text-slate-600 font-mono">${r.request_time || ''}</p>`}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // --- Logic Functions ---
+        function bulkApprove() {
+            if (selectedRules.size === 0) return;
+            document.getElementById('confirmMessage').innerHTML = `האם אתה בטוח שברצונך לאשר <span class="text-emerald-400 font-bold">${selectedRules.size}</span> חוקות?`;
+            document.getElementById('confirmModal').classList.remove('hidden');
+        }
+
+        async function executeBulkApprove() {
+            closeConfirmModal();
+            const promises = Array.from(selectedRules).map(id => fetch(`/approve-single-rule/${id}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ reason: "Bulk Approval" }) }));
+            await Promise.all(promises);
+            selectedRules.clear(); updateBulkToolbar(); loadRules();
+            showToast("החוקות אושרו בהצלחה");
+        }
+
+        function closeConfirmModal() { document.getElementById('confirmModal').classList.add('hidden'); }
+
+        function openRejectModal(id) {
+            ruleIdToReject = id;
+            document.getElementById('rejectReason').value = "";
+            document.getElementById('reject-error').classList.add('hidden');
+            document.getElementById('rejectModal').classList.remove('hidden');
+        }
+        function closeRejectModal() { document.getElementById('rejectModal').classList.add('hidden'); }
+
+        document.getElementById('confirmRejectBtn').onclick = async function() {
+            const reason = document.getElementById('rejectReason').value.trim();
+            if(!reason) {
+                document.getElementById('rejectReason').classList.add('shake');
+                document.getElementById('reject-error').classList.remove('hidden');
+                setTimeout(() => document.getElementById('rejectReason').classList.remove('shake'), 400);
+                return;
+            }
+            const id = ruleIdToReject || Array.from(selectedRules)[0];
+            await fetch(`/reject-single-rule/${id}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ reason: reason }) });
+            if (!ruleIdToReject) selectedRules.clear();
+            closeRejectModal(); loadRules(); updateBulkToolbar();
+            showToast("הבקשה נדחתה");
+        };
+
+        async function handleAction(type, id, commit) {
+            const url = type === 'approve' ? `/approve-single-rule/${id}` : `/reject-single-rule/${id}`;
+            try {
+                const res = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ reason: "Manual Admin Action" }) });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast(type === 'approve' ? "חוקה אושרה ונוצרה" : "חוקה נדחתה");
+                    if (commit) await commitAll();
+                    loadRules();
+                } else { showToast(data.message, 'error'); }
+            } catch (e) { showToast("שגיאת תקשורת", 'error'); }
+        }
+
+        async function commitAll() {
+            try {
+                const res = await fetch('/commit', { method: 'POST' });
+                const data = await res.json();
+                showToast(data.message);
+            } catch(e) { showToast("שגיאת Commit", 'error'); }
+        }
+
+        async function openEdit(id) {
+            const r = allRules.find(x => x.id === id); if (!r) return;
+            document.getElementById('editModal').classList.remove('hidden');
+            document.getElementById('edit_id').value = r.id;
+            document.getElementById('edit_rule_name').value = r.rule_name;
+            document.getElementById('edit_app').value = r.application;
+            if (!firewallParams) await fetchFirewallParams();
+            injectDataToModal(r);
+        }
+
+        function injectDataToModal(r) {
+            const fillSelect = (id, val) => {
+                const el = document.getElementById(id); if (!el) return;
+                if (![...el.options].some(o => o.value === val)) el.add(new Option(val, val), el.firstChild);
+                el.value = val || "any";
+            };
+            fillSelect('edit_from_zone', r.from_zone); fillSelect('edit_to_zone', r.to_zone);
+            fillSelect('edit_source_ip', r.source_ip); fillSelect('edit_destination_ip', r.destination_ip);
+            fillSelect('edit_port', r.service_port);
+        }
+
+        function closeEdit() { document.getElementById('editModal').classList.add('hidden'); }
+
+        async function saveEdit() {
+            const id = document.getElementById('edit_id').value;
+            const data = {
+                rule_name: document.getElementById('edit_rule_name').value,
+                from_zone: document.getElementById('edit_from_zone').value,
+                to_zone: document.getElementById('edit_to_zone').value,
+                source_ip: document.getElementById('edit_source_ip').value,
+                destination_ip: document.getElementById('edit_destination_ip').value,
+                application: document.getElementById('edit_app').value,
+                service_port: document.getElementById('edit_port').value
+            };
+            const res = await fetch(`/update-pending-rule/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+            const result = await res.json();
+            if (result.status === 'success') { showToast("עודכן בהצלחה"); closeEdit(); loadRules(); }
+            else { showToast(result.message, 'error'); }
+        }
+
+        async function fetchFirewallParams() {
+            if (firewallParams || isFetchingParams) return;
+            isFetchingParams = true;
+            try {
+                const res = await fetch('/get-params');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    firewallParams = data;
+                    const fill = (id, items) => { const el = document.getElementById(id); if (el) el.innerHTML = items.map(i => `<option value="${i}">${i}</option>`).join(''); };
+                    fill('edit_from_zone', data.zones); fill('edit_to_zone', data.zones);
+                    fill('edit_source_ip', data.addresses); fill('edit_destination_ip', data.addresses);
+                    fill('edit_port', data.services);
+                    document.getElementById('modal_app_list').innerHTML = data.applications.map(a => `<option value="${a}">${a}</option>`).join('');
+                }
+            } catch (e) { console.error(e); } finally { isFetchingParams = false; }
+        }
+
+        setInterval(loadRules, 20000);
+    </script>
+</body>
+</html>

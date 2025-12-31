@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>NET-OPS Admin Portal</title>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <style>
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Regular.ttf') }}") format('truetype');
+            font-weight: 400;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Bold.ttf') }}") format('truetype');
+            font-weight: 700;
+            font-style: normal;
+        }
+        body { font-family: 'Assistant', sans-serif !important; background-color: #0f172a; }
+        
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .btn-active { background-color: #4f46e5 !important; color: white !important; box-shadow: 0 0 15px rgba(79, 70, 229, 0.4); }
+        .btn-active div { background-color: #6366f1 !important; }
+        
+        .network-pulse { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); } 70% { box-shadow: 0 0 0 20px rgba(99, 102, 241, 0); } 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); } }
+        
+        /* עיצוב ה-Iframe והבטחת תפיסת גובה מלאה */
+        iframe { width: 100%; height: 100%; border: none; border-radius: 1.5rem; background-color: #0f172a; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+    <nav class="bg-slate-900 border-b border-slate-800 p-4 shadow-2xl z-20">
+        <div class="container mx-auto flex flex-row-reverse justify-between items-center">
+            <div class="flex items-center gap-6">
+                <span class="text-2xl font-black text-indigo-500 italic tracking-tighter">NET-OPS</span>
+                
+                {% if session.get('is_admin') %}
+                <div class="flex items-center gap-3">
+                    <div class="relative cursor-pointer flex items-center bg-slate-800 px-3 py-1 rounded-full border border-indigo-500/30 hover:border-indigo-500 transition-all" onclick="toggleComponent('admin-approval')" title="חוקות ממתינות">
+                        <span class="text-sm">🛡️</span>
+                        <span id="nav-rule-badge" class="mr-2 text-xs font-bold text-indigo-400">0</span>
+                    </div>
+                    <div class="relative cursor-pointer flex items-center bg-slate-800 px-3 py-1 rounded-full border border-purple-500/30 hover:border-purple-500 transition-all" onclick="toggleComponent('object-approval')" title="אובייקטים ממתינים">
+                        <span class="text-sm">📦</span>
+                        <span id="nav-obj-badge" class="mr-2 text-xs font-bold text-purple-400">0</span>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="flex items-center gap-6">
+                <button onclick="closeAll()" class="text-slate-400 hover:text-white transition-colors text-sm font-bold">דף הבית</button>
+                <a href="/logout" class="text-rose-400 hover:text-rose-300 transition-colors text-sm font-bold flex items-center gap-1"><span>🚪</span> יציאה</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="flex flex-1 overflow-hidden flex-row-reverse">
+        
+        <aside class="w-64 bg-slate-900 border-r border-slate-800 p-6 flex flex-col gap-4 shadow-2xl z-10 text-right">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">כלי ניהול</p>
+            
+            <button id="btn-palo-alto" onclick="toggleComponent('palo-alto')" class="nav-btn flex items-center gap-3 p-4 bg-slate-800 hover:bg-slate-700 rounded-xl transition-all group">
+                <div class="p-2 bg-slate-900 rounded-lg group-hover:bg-indigo-500 transition-colors">🛡️</div>
+                <span class="font-bold">Rule Manager</span>
+            </button>
+
+            <button id="btn-object-creator" onclick="toggleComponent('object-creator')" class="nav-btn flex items-center gap-3 p-4 bg-slate-800 hover:bg-slate-700 rounded-xl transition-all group">
+                <div class="p-2 bg-slate-900 rounded-lg group-hover:bg-purple-500 transition-colors">📦</div>
+                <span class="font-bold">Object Creator</span>
+            </button>
+
+            <button id="btn-policy-match" onclick="toggleComponent('policy-match')" class="nav-btn flex items-center gap-3 p-4 bg-slate-800 hover:bg-slate-700 rounded-xl transition-all group">
+                <div class="p-2 bg-slate-900 rounded-lg group-hover:bg-orange-500 transition-colors">🔍</div>
+                <span class="font-bold">Policy Match</span>
+            </button>
+
+            <button id="btn-policy-inventory" onclick="toggleComponent('policy-inventory')" class="nav-btn flex items-center gap-3 p-4 bg-slate-800 hover:bg-slate-700 rounded-xl transition-all group">
+                <div class="p-2 bg-slate-900 rounded-lg group-hover:bg-blue-500 transition-colors">📋</div>
+                <span class="font-bold">Policy Inventory</span>
+            </button>
+
+            <button id="btn-log-viewer" onclick="toggleComponent('log-viewer')" class="nav-btn flex items-center gap-3 p-4 bg-slate-800 hover:bg-slate-700 rounded-xl transition-all group">
+                <div class="p-2 bg-slate-900 rounded-lg group-hover:bg-emerald-500 transition-colors">📊</div>
+                <span class="font-bold">Traffic Logs</span>
+            </button>
+
+            <button id="btn-grafana" onclick="toggleComponent('grafana')" class="nav-btn flex items-center gap-3 p-4 bg-slate-800 hover:bg-slate-700 rounded-xl transition-all group">
+                <div class="p-2 bg-slate-900 rounded-lg group-hover:bg-orange-500 transition-colors">📈</div>
+                <span class="font-bold">Monitoring</span>
+            </button>
+
+            {% if not session.get('is_admin') %}
+            <div class="flex flex-col gap-2 mt-2 pt-2 border-t border-slate-800">
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-tighter mb-1 italic">הבקשות שלי</p>
+                <button id="btn-my-requests" onclick="toggleComponent('my-requests')" class="nav-btn flex items-center gap-3 p-4 bg-slate-800 hover:bg-slate-700 rounded-xl transition-all group">
+                    <div class="p-2 bg-slate-900 rounded-lg group-hover:bg-blue-500 transition-colors">📝</div>
+                    <span class="font-bold text-xs">סטטוס חוקות</span>
+                </button>
+                <button id="btn-my-objects" onclick="toggleComponent('my-objects')" class="nav-btn flex items-center gap-3 p-4 bg-slate-800 hover:bg-slate-700 rounded-xl transition-all group">
+                    <div class="p-2 bg-slate-900 rounded-lg group-hover:bg-purple-500 transition-colors">📦</div>
+                    <span class="font-bold text-xs">סטטוס אובייקטים</span>
+                </button>
+            </div>
+            {% endif %}
+
+            {% if session.get('is_admin') %}
+            <div class="mt-4 pt-4 border-t border-slate-800 flex flex-col gap-2 text-right">
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-tighter mb-1 italic">ניהול אדמין</p>
+                <button id="btn-admin-approval" onclick="toggleComponent('admin-approval')" class="nav-btn flex items-center gap-3 p-3 bg-indigo-900/20 hover:bg-indigo-800/40 rounded-xl transition-all group border border-indigo-500/20">
+                    <div class="p-2 bg-indigo-600 rounded-lg">🛡️</div>
+                    <span class="font-bold text-xs">אישור חוקות</span>
+                </button>
+                <button id="btn-object-approval" onclick="toggleComponent('object-approval')" class="nav-btn flex items-center gap-3 p-3 bg-purple-900/20 hover:bg-purple-800/40 rounded-xl transition-all group border border-purple-500/20">
+                    <div class="p-2 bg-purple-600 rounded-lg">📦</div>
+                    <span class="font-bold text-xs">אישור אובייקטים</span>
+                </button>
+            </div>
+            {% endif %}
+        </aside>
+
+        <main class="flex-1 flex flex-col p-8 overflow-hidden bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black">
+            
+            <div id="welcome-view" class="fade-in flex flex-col items-center justify-center h-full text-center">
+                <div class="mb-8 p-8 bg-slate-900/50 rounded-full border border-indigo-500/30 network-pulse">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                    </svg>
+                </div>
+                <h2 class="text-3xl font-extrabold mb-4 bg-gradient-to-r from-white to-slate-500 bg-clip-text text-transparent italic">- Network Operations Center - </h2>
+                <p class="text-slate-400 italic">ברוך הבא, {{ session.get('user') }}. בחר כלי עבודה מהתפריט.</p>
+            </div>
+
+            <div id="palo-alto-view" class="hidden h-full"><iframe id="rule-manager-iframe" src="/palo-manager"></iframe></div>
+            <div id="object-creator-view" class="hidden h-full"><iframe id="object-creator-iframe" src="/object-creator"></iframe></div>
+            <div id="policy-match-view" class="hidden h-full"><iframe src="/policy-match-tool"></iframe></div>
+            
+            <div id="policy-inventory-view" class="hidden h-full"><iframe id="policy-inventory-iframe" src="about:blank"></iframe></div>
+            
+            <div id="log-viewer-view" class="hidden h-full"><iframe id="traffic-logs-iframe" src="about:blank"></iframe></div>
+            <div id="grafana-view" class="hidden h-full"><iframe src="http://10.3.0.40:3000"></iframe></div>
+            <div id="my-requests-view" class="hidden h-full"><iframe src="/my-requests-tool"></iframe></div>
+            <div id="my-objects-view" class="hidden h-full"><iframe src="/my-objects-tool"></iframe></div>
+            <div id="admin-approval-view" class="hidden h-full"><iframe id="approval-iframe" src="/admin-approval-tool"></iframe></div>
+            <div id="object-approval-view" class="hidden h-full"><iframe src="/object-approval-tool"></iframe></div>
+
+        </main>
+    </div>
+
+    <script>
+        const views = [
+            'palo-alto-view', 'object-creator-view', 'policy-match-view', 
+            'log-viewer-view', 'my-requests-view', 'my-objects-view', 
+            'admin-approval-view', 'object-approval-view', 'grafana-view',
+            'policy-inventory-view'
+        ];
+
+        /**
+         * פונקציה מרכזית לניהול הניווט בין הרכיבים.
+         * @param {string} compId 
+         */
+        function toggleComponent(compId) {
+            closeAll();
+            const view = document.getElementById(compId + '-view');
+            const btn = document.getElementById('btn-' + compId);
+            
+            // Lazy Loading עבור הלוגים
+            const logsFrame = document.getElementById('traffic-logs-iframe');
+            if (compId === 'log-viewer') {
+                if (logsFrame && (logsFrame.src === "about:blank" || !logsFrame.src.includes('/log-viewer'))) {
+                    logsFrame.src = "/log-viewer"; 
+                }
+            }
+
+            // Lazy Loading עבור ה-Policy Inventory החדש
+            const inventoryFrame = document.getElementById('policy-inventory-iframe');
+            if (compId === 'policy-inventory') {
+                if (inventoryFrame && (inventoryFrame.src === "about:blank" || !inventoryFrame.src.includes('/policy-inventory'))) {
+                    inventoryFrame.src = "/policy-inventory"; 
+                }
+            }
+
+            if (view) {
+                view.classList.remove('hidden');
+                document.getElementById('welcome-view').classList.add('hidden');
+            }
+            if (btn) {
+                btn.classList.add('btn-active');
+            }
+        }
+
+        window.toggleComponent = toggleComponent;
+
+        function closeAll() {
+            views.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('btn-active'));
+            document.getElementById('welcome-view').classList.remove('hidden');
+        }
+
+        window.addEventListener('message', function(event) {
+            if (event.data.type === 'UPDATE_COUNTER') {
+                const targetId = event.data.source === 'rules' ? 'nav-rule-badge' : 'nav-obj-badge';
+                const badge = document.getElementById(targetId);
+                if(badge) badge.innerText = event.data.count;
+            }
+
+            if (event.data.type === 'FILL_RULE') {
+                toggleComponent('palo-alto'); 
+                setTimeout(() => {
+                    const managerIframe = document.getElementById('rule-manager-iframe');
+                    if (managerIframe && managerIframe.contentWindow) {
+                        managerIframe.contentWindow.postMessage(event.data, '*');
+                    }
+                }, 600);
+            }
+        });
+
+        async function updateBadges() {
+            try {
+                const [rRes, oRes] = await Promise.all([
+                    fetch('/get-admin-view-rules'),
+                    fetch('/get-admin-view-objects')
+                ]);
+                
+                const rData = await rRes.json();
+                const oData = await oRes.json();
+                
+                const pendingRules = Array.isArray(rData) ? rData.filter(r => (r.status || '').toLowerCase() === 'pending').length : 0;
+                const pendingObjs = Array.isArray(oData) ? oData.filter(o => (o.status || '').toLowerCase() === 'pending').length : 0;
+                
+                const ruleBadge = document.getElementById('nav-rule-badge');
+                const objBadge = document.getElementById('nav-obj-badge');
+                
+                if(ruleBadge) ruleBadge.innerText = pendingRules;
+                if(objBadge) objBadge.innerText = pendingObjs;
+            } catch(e) {
+                console.error("Badge sync error:", e);
+            }
+        }
+        
+        setInterval(updateBadges, 15000);
+        window.onload = updateBadges;
+    </script>
+</body>
+</html>

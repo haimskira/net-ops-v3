@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetOps - Create Object</title>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v=1.5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/choices.min.css') }}">
+    <script src="{{ url_for('static', filename='js/choices.min.js') }}"></script>
+    
+    <style>
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Regular.ttf') }}") format('truetype');
+            font-weight: 400;
+        }
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Bold.ttf') }}") format('truetype');
+            font-weight: 700;
+        }
+
+        body { 
+            font-family: 'Assistant', sans-serif !important; 
+            background-color: #0f172a; 
+            color: #f8fafc; 
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        
+        .spinner { border-top-color: transparent !important; animation: rot 1s linear infinite; }
+        @keyframes rot { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        .choices__inner { 
+            border-radius: 0.75rem !important; background-color: #1e293b !important; 
+            border: 1px solid #334155 !important; padding: 8px !important; color: #f8fafc !important;
+            min-height: 50px; text-align: right;
+        }
+        .choices__list--dropdown { background-color: #1e293b !important; border: 1px solid #334155 !important; color: #f8fafc !important; }
+        .choices__item--selectable.is-highlighted { background-color: #4f46e5 !important; }
+        
+        .glass-card {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .input-focus:focus { border-color: #6366f1 !important; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
+    </style>
+</head>
+<body class="p-6">
+    <div class="max-w-2xl w-full glass-card rounded-3xl p-8 shadow-2xl transition-all">
+        
+        <div class="flex items-center justify-between mb-8 border-b border-slate-700/50 pb-6">
+            <h2 class="text-2xl font-bold text-indigo-400 flex items-center gap-3">
+                <span class="bg-indigo-500/10 p-2 rounded-lg">📦</span> יצירת אובייקט תשתית
+            </h2>
+            <div id="loading-indicator" class="hidden flex items-center gap-2 bg-slate-900/80 px-4 py-2 rounded-full border border-indigo-500/30">
+                <div class="spinner w-3.5 h-3.5 border-2 border-indigo-400 rounded-full"></div>
+                <span class="text-xs font-medium text-slate-300">טוען מה-DB...</span>
+            </div>
+        </div>
+        
+        <div class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-bold text-slate-400 mb-2">סוג אובייקט</label>
+                    <select id="type" onchange="updateUI()" class="w-full border border-slate-700 p-3 rounded-xl bg-slate-900 text-slate-200 outline-none">
+                        <option value="address">כתובת (IP Host)</option>
+                        <option value="address-group">קבוצת כתובות (Address Group)</option>
+                        <option value="service">שירות (Port/Protocol)</option>
+                        <option value="service-group">קבוצת שירותים (Service Group)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-slate-400 mb-2">שם האובייקט</label>
+                    <input type="text" id="name" placeholder="למשל: SRV_PROD_WEB" class="w-full border border-slate-700 p-3 rounded-xl bg-slate-900 text-slate-200 outline-none input-focus">
+                </div>
+            </div>
+
+            <div id="single-value-container" class="space-y-2">
+                <label id="value-label" class="block text-sm font-bold text-slate-400">ערך</label>
+                <div class="flex gap-3">
+                    <input type="text" id="value" class="flex-1 border border-slate-700 p-3 rounded-xl bg-slate-900 text-slate-200 outline-none input-focus">
+                    
+                    <select id="prefix_container" class="w-28 border border-slate-700 p-3 rounded-xl bg-slate-900 text-slate-200 outline-none">
+                        <option value="32">/32 (Host)</option>
+                        <option value="24">/24</option>
+                        <option value="16">/16</option>
+                        <option value="8">/8</option>
+                    </select>
+
+                    <select id="protocol_container" class="w-32 border border-slate-700 p-3 rounded-xl bg-slate-900 text-slate-200 outline-none hidden">
+                        <option value="tcp">TCP</option>
+                        <option value="udp">UDP</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="multi-select-container" class="hidden space-y-2">
+                <label id="multi-label" class="block text-sm font-bold text-slate-400">בחר חברים מה-DB</label>
+                <select id="members_select" class="w-full" multiple></select>
+            </div>
+        </div>
+
+        <button onclick="createObj()" id="btn" class="w-full mt-10 bg-indigo-600 text-white font-bold py-4 rounded-2xl hover:bg-indigo-500 transition-all shadow-lg active:scale-[0.98] flex items-center justify-center gap-2">
+            <span>🚀</span> שלח בקשת יצירה לאישור
+        </button>
+        
+        <div id="status" class="mt-6 p-4 rounded-xl hidden text-center font-bold border"></div>
+    </div>
+
+    <script>
+        let multiSelect;
+        
+        const isValidIPv4 = (ip) => /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(ip);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const element = document.getElementById('members_select');
+            multiSelect = new Choices(element, {
+                removeItemButton: true,
+                placeholderValue: 'חפש אובייקט...',
+                noChoicesText: 'לא נמצאו נתונים',
+                itemSelectText: 'בחר',
+                searchEnabled: true
+            });
+            updateUI();
+        });
+
+        async function updateUI() {
+            const type = document.getElementById('type').value;
+            const isGroup = type.includes('group');
+            
+            document.getElementById('single-value-container').classList.toggle('hidden', isGroup);
+            document.getElementById('multi-select-container').classList.toggle('hidden', !isGroup);
+            
+            document.getElementById('prefix_container').classList.toggle('hidden', type !== 'address');
+            document.getElementById('protocol_container').classList.toggle('hidden', type !== 'service');
+
+            if (isGroup) {
+                const endpoint = type === 'address-group' ? '/get-address-objects' : '/get-service-objects';
+                const key = type === 'address-group' ? 'addresses' : 'services';
+                loadChoices(endpoint, key);
+            }
+        }
+
+        async function loadChoices(url, dataKey) {
+            const loader = document.getElementById('loading-indicator');
+            loader.classList.remove('hidden');
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const items = data[dataKey].map(name => ({ value: name, label: name }));
+                    multiSelect.clearChoices();
+                    multiSelect.setChoices(items, 'value', 'label', true);
+                }
+            } catch (e) { console.error("Load Error", e); }
+            finally { loader.classList.add('hidden'); }
+        }
+
+        async function createObj() {
+            const btn = document.getElementById('btn');
+            const type = document.getElementById('type').value;
+            const name = document.getElementById('name').value.trim();
+            let value;
+
+            if (!name) return alert("חובה להזין שם");
+            
+            if (type.includes('group')) {
+                const selected = multiSelect.getValue(true);
+                if (selected.length === 0) return alert("קבוצה לא יכולה להיות ריקה");
+                value = selected.join(',');
+            } else {
+                value = document.getElementById('value').value.trim();
+                if (!value) return alert("חובה להזין ערך");
+                if (type === 'address' && !isValidIPv4(value)) return alert("IP לא תקין");
+            }
+
+            const payload = {
+                type, name, value,
+                prefix: document.getElementById('prefix_container').value,
+                protocol: document.getElementById('protocol_container').value
+            };
+
+            btn.disabled = true;
+            btn.innerHTML = "מעבד...";
+
+            try {
+                const res = await fetch('/create-object', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                const status = document.getElementById('status');
+                status.classList.remove('hidden');
+                status.innerText = data.message;
+                status.className = `mt-6 p-4 rounded-xl text-center font-bold border ${data.status === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/10 text-rose-400 border-rose-500/30'}`;
+            } catch (e) { alert("שגיאת שרת"); }
+            finally { 
+                btn.disabled = false; 
+                btn.innerHTML = "🚀 שלח בקשת יצירה לאישור"; 
+            }
+        }
+    </script>
+</body>
+</html>

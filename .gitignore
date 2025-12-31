@@ -1,0 +1,10 @@
+env/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+netops.db
+data/
+*.db
+traffic/
+traffic.json

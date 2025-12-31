@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NET-OPS | Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v=2.0">
+
+    <style>
+        /* הגדרת פונט אסיסטנט */
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Regular.ttf') }}") format('truetype');
+            font-weight: 400;
+        }
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Bold.ttf') }}") format('truetype');
+            font-weight: 700;
+        }
+
+        body { 
+            font-family: 'Assistant', sans-serif !important; 
+        }
+
+        /* רקע מדורג מותאם אישית */
+        .bg-custom-gradient { 
+            background: radial-gradient(circle at top right, #1e293b, #0f172a, #000000) !important; 
+        }
+    </style>
+</head>
+<body class="bg-custom-gradient min-h-screen flex items-center justify-center p-6">
+
+    <div class="w-full max-w-md bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-10 rounded-[2.5rem] shadow-2xl">
+        <div class="text-center mb-10">
+            <span class="text-3xl font-black text-indigo-500 italic tracking-tighter">NET-OPS</span>
+            <h1 class="text-slate-100 text-xl font-bold mt-4">כניסה למערכת</h1>
+            <p class="text-slate-500 text-sm mt-2">הזדהות באמצעות Active Directory</p>
+        </div>
+
+        <form method="POST" action="/login" class="space-y-6">
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 mr-1">שם משתמש</label>
+                <input type="text" name="username" required autofocus
+                    class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-700"
+                    placeholder="Username">
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 mr-1">סיסמה</label>
+                <input type="password" name="password" required
+                    class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-700"
+                    placeholder="••••••••">
+            </div>
+
+            {% if error %}
+            <div class="bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm p-4 rounded-xl text-center font-bold">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <button type="submit" 
+                class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-900/20 transition-all transform active:scale-[0.98]">
+                התחבר עכשיו
+            </button>
+        </form>
+
+        <div class="mt-8 text-center">
+            <p class="text-slate-600 text-xs">המערכת מיועדת לצוותי הנדסת רשת ואבטחת מידע בלבד</p>
+        </div>
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Palo Alto Rule Manager Pro</title>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <style>
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Regular.ttf') }}") format('truetype');
+            font-weight: 400;
+        }
+        @font-face {
+            font-family: 'Assistant';
+            src: url("{{ url_for('static', filename='fonts/Assistant-Bold.ttf') }}") format('truetype');
+            font-weight: 700;
+        }
+        body { 
+            font-family: 'Assistant', sans-serif !important; 
+            background-color: #0f172a; 
+            color: #f8fafc; 
+            margin: 0;
+            padding: 20px;
+        }
+
+        .glass-card { 
+            background: rgba(30, 41, 59, 0.4); 
+            backdrop-filter: blur(12px); 
+            border: 1px solid rgba(255, 255, 255, 0.05); 
+        }
+
+        .spinner { border-top-color: transparent; animation: rot 1s linear infinite; }
+        @keyframes rot { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        input, select { 
+            background-color: #1e293b !important; 
+            border: 1px solid #334155 !important; 
+            color: #f1f5f9 !important;
+            width: 100%;
+            padding: 12px;
+            border-radius: 12px;
+            outline: none;
+            transition: all 0.2s;
+        }
+        input:focus, select:focus { 
+            border-color: #6366f1 !important; 
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+
+        .live-results {
+            position: absolute;
+            z-index: 100;
+            width: 100%;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0 0 12px 12px;
+            max-height: 220px;
+            overflow-y: auto;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7);
+        }
+        .result-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #0f172a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .result-item:hover { background-color: #312e81; }
+        .result-item .sub-val { font-size: 0.75rem; color: #94a3b8; }
+        
+        button:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
+        .auto-detect-badge { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: #4f46e5; color: white; margin-right: 5px; }
+        
+        input:disabled, select:disabled { 
+            background-color: #0f172a !important;
+            opacity: 0.4;
+            cursor: not-allowed;
+            border-style: dashed !important;
+        }
+
+        .shake { animation: shake 0.4s ease-in-out; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-6px); }
+            75% { transform: translateX(6px); }
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <div class="max-w-4xl mx-auto glass-card shadow-2xl rounded-3xl overflow-hidden mt-10">
+        <div class="bg-indigo-600/20 p-8 border-b border-slate-700 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-extrabold tracking-tight text-indigo-400">Rule Manager Pro</h1>
+                <p class="text-slate-400 mt-1">ניהול חוקה חכם מבוסס תשתית ה-DB</p>
+            </div>
+            <div id="loading-indicator" class="flex items-center gap-3 bg-slate-900/80 px-5 py-2 rounded-full border border-indigo-500/30">
+                <div class="spinner w-4 h-4 border-2 border-indigo-400 rounded-full"></div>
+                <span class="text-sm font-medium text-slate-300">טוען תשתיות...</span>
+            </div>
+        </div>
+
+        <div class="p-8">
+            <div id="shadow-check-container" class="mb-6 hidden">
+                <div id="shadow-alert" class="flex items-center gap-3 p-4 rounded-2xl border transition-all duration-300"></div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="md:col-span-2 space-y-2">
+                    <label class="font-bold text-slate-400 block text-sm mr-1">שם החוקה</label>
+                    <input type="text" id="rule_name" placeholder="הזן שם לחוקה (חובה)">
+                </div>
+
+                <div class="space-y-2">
+                    <label class="font-bold text-slate-400 block text-sm mr-1 flex items-center">
+                        From Zone <span id="src-zone-status" class="hidden auto-detect-badge">זוהה אוטומטית</span>
+                    </label>
+                    <select id="from_zone"></select>
+                </div>
+                <div class="space-y-2">
+                    <label class="font-bold text-slate-400 block text-sm mr-1 flex items-center">
+                        To Zone <span id="dst-zone-status" class="hidden auto-detect-badge">זוהה אוטומטית</span>
+                    </label>
+                    <select id="to_zone"></select>
+                </div>
+
+                <div class="space-y-4 bg-slate-900/30 p-4 rounded-2xl border border-slate-800">
+                    <div class="space-y-2 relative">
+                        <label class="font-bold text-indigo-400 block text-sm">Source IP/Object</label>
+                        <input id="source_ip" autocomplete="off" placeholder="הקלד IP או שם אובייקט..." 
+                               oninput="handleInputProcessing(this, 'src')">
+                        <div id="src_results" class="live-results hidden"></div>
+                    </div>
+                    <select id="source_group" onchange="handleMutualExclusion('source_group', 'source_ip')">
+                        <option value="">-- בחר קבוצה מה-DB --</option>
+                    </select>
+                </div>
+
+                <div class="space-y-4 bg-slate-900/30 p-4 rounded-2xl border border-slate-800">
+                    <div class="space-y-2 relative">
+                        <label class="font-bold text-indigo-400 block text-sm">Destination IP/Object</label>
+                        <input id="destination_ip" autocomplete="off" placeholder="הקלד IP או שם אובייקט..." 
+                               oninput="handleInputProcessing(this, 'dst')">
+                        <div id="dst_results" class="live-results hidden"></div>
+                    </div>
+                    <select id="destination_group" onchange="handleMutualExclusion('destination_group', 'destination_ip')">
+                        <option value="">-- בחר קבוצה מה-DB --</option>
+                    </select>
+                </div>
+
+                <div class="space-y-2 relative">
+                    <label class="font-bold text-indigo-400 block text-sm mr-1">Application</label>
+                    <input id="application" autocomplete="off" value="any" 
+                           oninput="handleLiveSearch(this, 'app', fwAppList)">
+                    <div id="app_results" class="live-results hidden"></div>
+                </div>
+
+                <div class="space-y-2 relative">
+                    <label class="font-bold text-indigo-400 block text-sm mr-1">Service (Port)</label>
+                    <input id="service_port" autocomplete="off" placeholder="חפש פורט או שירות..." 
+                           oninput="handleLiveSearch(this, 'service', fwServiceList)">
+                    <div id="service_results" class="live-results hidden"></div>
+                </div>
+
+                <div class="space-y-2 relative">
+                    <label class="font-bold text-slate-400 block text-sm mr-1">Tag (Expiration)</label>
+                    <input id="tag" autocomplete="off" placeholder="חפש  TAG..." 
+                           oninput="handleLiveSearch(this, 'tag', fwTagList)">
+                    <div id="tag_results" class="live-results hidden"></div>
+                </div>
+
+                <div class="space-y-2 relative">
+                    <label class="font-bold text-orange-400 block text-sm mr-1">Group Tag</label>
+                    <input id="group_tag" autocomplete="off" placeholder="G-... tag group" 
+                           oninput="handleLiveSearch(this, 'group_tag', fwGroupTagList)">
+                    <div id="group_tag_results" class="live-results hidden"></div>
+                </div>
+            </div>
+
+            <div class="mt-10">
+                <button id="submit-btn" onclick="submitAction('/create-rule')" 
+                        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-2xl shadow-lg transition transform active:scale-[0.98]">
+                    שלח בקשת חוקה לאישור
+                </button>
+            </div>
+            
+            <div id="status" class="mt-8 p-4 rounded-2xl hidden text-center font-bold border"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- State & Shared Variables ---
+        let fwObjectMap = {};
+        let fwAppList = [];
+        let fwServiceList = [];
+        let fwTagList = [];
+        let fwGroupTagList = [];
+        let isShadowBlocked = false;
+        let shadowCheckTimeout;
+
+        /**
+         * טעינת פרמטרים וביצוע אכלוס רשימות ראשוני
+         */
+        async function fetchParams() {
+            try {
+                const res = await fetch('/get-params');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    fwObjectMap = data.address_map || {};
+                    fwAppList = data.applications || ["any"];
+                    fwServiceList = data.services || ["any", "application-default"];
+                    fwTagList = ["None", ...(data.tags || []).filter(t => !t.startsWith('G-'))];
+                    fwGroupTagList = (data.tags || []).filter(t => t.startsWith('G-'));
+
+                    // אכלוס Dropdowns רגילים
+                    const populateSelect = (id, items, def) => {
+                        const el = document.getElementById(id);
+                        if (!el) return;
+                        el.innerHTML = id.includes('group') ? '<option value="">-- בחר קבוצה --</option>' : '';
+                        let finalItems = [...items];
+                        if (id.includes('zone') && !finalItems.includes('any')) finalItems.unshift('any');
+                        finalItems.forEach(i => {
+                            const o = new Option(i, i);
+                            if (i === (def || (id.includes('zone') ? 'any' : ''))) o.selected = true;
+                            el.add(o);
+                        });
+                    };
+
+                    populateSelect('from_zone', data.zones);
+                    populateSelect('to_zone', data.zones);
+                    populateSelect('source_group', data.address_groups);
+                    populateSelect('destination_group', data.address_groups);
+                    
+                    document.getElementById('loading-indicator').classList.add('hidden');
+                }
+            } catch (e) { console.error("Fetch params failed", e); }
+        }
+
+        /**
+         * עיבוד קלט חי לכתובות (IP/Object)
+         */
+        function handleInputProcessing(input, type) {
+            handleLiveSearch(input, type, fwObjectMap);
+            handleMutualExclusion(input.id, type === 'src' ? 'source_group' : 'destination_group');
+            clearTimeout(input.zoneTimeout);
+            input.zoneTimeout = setTimeout(() => runAutoZoneDetection(input.value, type), 600);
+            triggerShadowCheck();
+        }
+
+        /**
+         * מנוע חיפוש חי גנרי (Autocomplete Engine)
+         */
+        function handleLiveSearch(input, type, dataSource) {
+            const query = input.value.toLowerCase().trim();
+            const resultsBox = document.getElementById(`${type}_results`);
+            if (!resultsBox) return;
+            
+            resultsBox.innerHTML = "";
+            if (!query && !['app', 'service', 'tag', 'group_tag'].includes(type)) {
+                resultsBox.classList.add("hidden");
+                return;
+            }
+
+            let matches = [];
+            // תמיכה בחיפוש במילון (IPs) או במערך (Apps/Tags/Services)
+            if (Array.isArray(dataSource)) {
+                matches = dataSource.filter(i => i.toLowerCase().includes(query)).slice(0, 15);
+            } else {
+                matches = Object.entries(dataSource).filter(([name, ip]) => 
+                    name.toLowerCase().includes(query) || (ip && ip.includes(query))
+                ).slice(0, 15);
+            }
+
+            if (matches.length === 0) {
+                resultsBox.classList.add("hidden");
+                return;
+            }
+
+            matches.forEach(match => {
+                const item = document.createElement("div");
+                item.className = "result-item";
+                
+                if (Array.isArray(dataSource)) {
+                    item.innerHTML = `<span>${match}</span>`;
+                    item.onmousedown = () => { 
+                        input.value = match; 
+                        resultsBox.classList.add("hidden"); 
+                        triggerShadowCheck(); 
+                    };
+                } else {
+                    const [name, ip] = match;
+                    item.innerHTML = `<span><strong>${name}</strong></span><span class="sub-val">${ip || ''}</span>`;
+                    item.onmousedown = () => { 
+                        input.value = name; 
+                        resultsBox.classList.add("hidden"); 
+                        handleMutualExclusion(input.id, type === 'src' ? 'source_group' : 'destination_group');
+                        runAutoZoneDetection(name, type);
+                        triggerShadowCheck();
+                    };
+                }
+                resultsBox.appendChild(item);
+            });
+            resultsBox.classList.remove("hidden");
+        }
+
+        async function runAutoZoneDetection(val, type) {
+            if (!val || val === 'any' || val.length < 3) return;
+            try {
+                const res = await fetch(`/api/detect-zone?ip=${encodeURIComponent(val)}`);
+                const data = await res.json();
+                if (data.status === 'success' && data.zone) {
+                    document.getElementById(type === 'src' ? 'from_zone' : 'to_zone').value = data.zone;
+                    document.getElementById(`${type}-zone-status`).classList.remove('hidden');
+                    triggerShadowCheck();
+                } else {
+                    document.getElementById(`${type}-zone-status`).classList.add('hidden');
+                }
+            } catch (e) { console.error("Zone detection error", e); }
+        }
+
+        function triggerShadowCheck() {
+            clearTimeout(shadowCheckTimeout);
+            shadowCheckTimeout = setTimeout(runShadowCheck, 500);
+        }
+
+        async function runShadowCheck() {
+            const src = document.getElementById('source_ip').value || document.getElementById('source_group').value || 'any';
+            const dst = document.getElementById('destination_ip').value || document.getElementById('destination_group').value || 'any';
+            const submitBtn = document.getElementById('submit-btn');
+            
+            const data = {
+                source_ip: src, 
+                destination_ip: dst,
+                service_port: document.getElementById('service_port').value,
+                from_zone: document.getElementById('from_zone').value, 
+                to_zone: document.getElementById('to_zone').value
+            };
+
+            if (src === 'any' && dst === 'any' && data.from_zone === 'any') return;
+
+            try {
+                const res = await fetch('/check-shadow', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify(data) 
+                });
+                const result = await res.json();
+                const container = document.getElementById('shadow-check-container');
+                const alertBox = document.getElementById('shadow-alert');
+
+                if (result.status === 'shadowed') {
+                    container.classList.remove('hidden');
+                    isShadowBlocked = true; 
+                    submitBtn.disabled = true;
+                    submitBtn.innerText = "חוק קיים במערכת - השליחה חסומה";
+                    alertBox.className = "flex items-center gap-3 p-4 rounded-2xl border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 shake";
+                    alertBox.innerHTML = `<span>✅ <strong>תעבורה מאושרת:</strong> קיימת כבר בחוקים: ${result.rules.join(', ')}</span>`;
+                } else {
+                    isShadowBlocked = false; 
+                    container.classList.add('hidden');
+                    submitBtn.disabled = false; 
+                    submitBtn.innerText = "שלח בקשת חוקה לאישור";
+                }
+            } catch (e) { console.error("Shadow check error", e); }
+        }
+
+        function handleMutualExclusion(activeId, inactiveId) {
+            const activeEl = document.getElementById(activeId);
+            const inactiveEl = document.getElementById(inactiveId);
+            if (!activeEl || !inactiveEl) return;
+            if (activeEl.value.trim() !== "") {
+                inactiveEl.disabled = true; inactiveEl.value = "";
+            } else {
+                inactiveEl.disabled = false;
+            }
+        }
+
+        async function submitAction(endpoint) {
+            const nameField = document.getElementById('rule_name');
+            const status = document.getElementById('status');
+
+            if (!nameField.value.trim()) {
+                status.innerText = "⚠️ חובה להזין שם לחוקה לפני השליחה";
+                status.className = "mt-8 p-4 rounded-2xl block border text-center font-bold bg-rose-500/10 text-rose-400 shake";
+                status.classList.remove('hidden');
+                nameField.focus();
+                return;
+            }
+
+            if (isShadowBlocked) return;
+
+            const data = {
+                rule_name: nameField.value.trim(),
+                from_zone: document.getElementById('from_zone').value,
+                to_zone: document.getElementById('to_zone').value,
+                source_ip: document.getElementById('source_ip').value || document.getElementById('source_group').value || 'any',
+                destination_ip: document.getElementById('destination_ip').value || document.getElementById('destination_group').value || 'any',
+                application: document.getElementById('application').value || 'any',
+                service_port: document.getElementById('service_port').value || 'application-default',
+                tag: document.getElementById('tag').value || 'None',
+                group_tag: document.getElementById('group_tag').value
+            };
+
+            status.innerText = "שולח בקשה..."; 
+            status.className = "mt-8 p-4 rounded-2xl block border text-center font-bold bg-indigo-500/10 text-indigo-400";
+            status.classList.remove('hidden');
+
+            try {
+                const res = await fetch(endpoint, { 
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) 
+                });
+                const r = await res.json();
+                status.innerText = r.message;
+                status.className = `mt-8 p-4 rounded-2xl block border text-center font-bold ${r.status === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`;
+                if (r.status === 'success') setTimeout(() => location.reload(), 2000);
+            } catch (e) { status.innerText = "שגיאת תקשורת עם השרת"; }
+        }
+
+        /**
+         * מאזין להזרקת נתונים מה-Log Viewer
+         */
+        window.addEventListener('message', function(event) {
+            if (event.data.type === 'FILL_RULE') {
+                const log = event.data.data;
+                document.getElementById('rule_name').value = `RULE_${log.app.toUpperCase()}_${log.dst_port}`;
+                document.getElementById('source_ip').value = log.source;
+                document.getElementById('destination_ip').value = log.destination;
+                document.getElementById('application').value = log.app || 'any';
+                document.getElementById('service_port').value = log.dst_port || 'any';
+                
+                if (log.src_zone) document.getElementById('from_zone').value = log.src_zone;
+                if (log.dst_zone) document.getElementById('to_zone').value = log.dst_zone;
+
+                handleMutualExclusion('source_ip', 'source_group');
+                handleMutualExclusion('destination_ip', 'destination_group');
+                
+                const card = document.querySelector('.glass-card');
+                if (card) {
+                    card.style.boxShadow = "0 0 30px rgba(99, 102, 241, 0.4)";
+                    setTimeout(() => card.style.boxShadow = "", 1500);
+                }
+
+                triggerShadowCheck();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        });
+
+        // Initialization
+        window.onload = fetchParams;
+
+        // האזנה לשינויים בשדות לצורך עדכון Shadow Check
+        ['from_zone', 'to_zone', 'service_port', 'source_group', 'destination_group'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', triggerShadowCheck);
+        });
+
+        // סגירת תוצאות בחיצה בחוץ
+        document.addEventListener("click", (e) => {
+            if (!e.target.closest('.relative')) {
+                ['src', 'dst', 'app', 'service', 'tag', 'group_tag'].forEach(t => {
+                    const box = document.getElementById(`${t}_results`);
+                    if(box) box.classList.add('hidden');
+                });
+            }
+        });
+    </script>
+</body>
+</html>

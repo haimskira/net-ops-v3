@@ -1,0 +1,9 @@
+flask
+requests
+pan-os-python
+python-dotenv
+urllib3
+ldap3
+setuptools
+flask-sqlalchemy
+netaddr

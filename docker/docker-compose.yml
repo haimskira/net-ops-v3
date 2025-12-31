@@ -1,0 +1,16 @@
+version: '3.3'
+
+services:
+  net-ops:
+    container_name: netops-offline
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5100:5100"
+      - "514:514/udp"
+    env_file:
+      - ../.env
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
