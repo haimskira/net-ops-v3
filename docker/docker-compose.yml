@@ -1,4 +1,4 @@
-version: '3.3'
+version: '3.8'
 
 services:
   net-ops:
@@ -8,9 +8,16 @@ services:
       dockerfile: docker/Dockerfile
     restart: unless-stopped
     ports:
-      - "5100:5100"
-      - "514:514/udp"
+      - "5100:5100"       # Web UI
+      - "514:514/udp"     # Syslog Listener
     env_file:
       - ../.env
+    environment:
+      - DATA_PATH=/app/data
+      - IS_DOCKER=True
     volumes:
+      - ../data:/app/data
       - /etc/localtime:/etc/localtime:ro
+
+volumes:
+  netops_data:
