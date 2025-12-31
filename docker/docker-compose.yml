@@ -2,22 +2,25 @@ version: '3.8'
 
 services:
   net-ops:
+    # שם האימג' כפי שטענת אותו ב-docker load
+    image: netops-pro:v3
     container_name: netops-offline
-    build:
-      context: ../
-      dockerfile: docker/Dockerfile
     restart: unless-stopped
+    
     ports:
-      - "5100:5100"       # Web UI
-      - "514:514/udp"     # Syslog Listener
+      - "5100:5100/tcp"
+      - "514:514/udp"
+    
+    # הזרקת קונפיגורציה בזמן ריצה (Runtime)
+    # הקובץ .env חייב להיות קיים בתיקייה שבה נמצא ה-docker-compose
     env_file:
       - ../.env
+    
     environment:
       - DATA_PATH=/app/data
       - IS_DOCKER=True
+      - FLASK_ENV=production
+    
     volumes:
       - ../data:/app/data
       - /etc/localtime:/etc/localtime:ro
-
-volumes:
-  netops_data:

@@ -2,27 +2,24 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <style>
         @font-face {
             font-family: 'Assistant';
             src: url("{{ url_for('static', filename='fonts/Assistant-Regular.ttf') }}") format('truetype');
             font-weight: 400;
-            font-style: normal;
         }
         @font-face {
             font-family: 'Assistant';
             src: url("{{ url_for('static', filename='fonts/Assistant-Bold.ttf') }}") format('truetype');
             font-weight: 700;
-            font-style: normal;
         }
-        body { font-family: 'Assistant', sans-serif !important; }
-    </style>
-
-    
-    <style>
-        body { font-family: 'Assistant', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        body { 
+            font-family: 'Assistant', sans-serif !important; 
+            background-color: #0f172a; 
+            color: #f8fafc; 
+            margin: 0;
+        }
         
         .spinner-custom { 
             border-top-color: transparent !important; 
@@ -112,96 +109,133 @@
         </div>
     </div>
 
-    <script>
-        async function loadZones() {
-            try {
-                const res = await fetch('/get-params');
-                const data = await res.json();
-                if (data.status === 'success') {
-                    const fromEl = document.getElementById('from_zone');
-                    const toEl = document.getElementById('to_zone');
-                    
-                    // ניקוי קודם
-                    fromEl.innerHTML = ''; toEl.innerHTML = '';
-                    
-                    data.zones.forEach(z => {
-                        fromEl.add(new Option(z, z));
-                        toEl.add(new Option(z, z));
-                    });
-                    document.getElementById('loading-indicator').classList.add('hidden');
-                }
-            } catch (e) { 
-                console.error("Error loading data", e);
-                document.getElementById('loading-indicator').innerHTML = '<span class="text-xs text-rose-400">שגיאה בחיבור לשרת</span>';
-            }
-        }
-
-        async function runMatch() {
-            const btn = document.getElementById('run-btn');
-            const resultBox = document.getElementById('result-box');
+<script>
+    /**
+     * JSDoc: טוען את ה-Zones הקיימים מהשרת ומסנן את הערך 'any'.
+     * הפיירוול אינו מאפשר סימולציה על Zone כללי (any).
+     */
+/**
+ * JSDoc: טוען את האזורים ומוסיף אופציית "ללא אזור" לסימולציה גמישה.
+ */
+async function loadZones() {
+    const loader = document.getElementById('loading-indicator');
+    try {
+        const res = await fetch('/get-params');
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+            const fromEl = document.getElementById('from_zone');
+            const toEl = document.getElementById('to_zone');
             
-            // איפוס והכנה
-            btn.disabled = true;
-            btn.innerHTML = `<div class="spinner-custom w-5 h-5 border-2 border-white rounded-full"></div> בודק חוקה...`;
-            resultBox.classList.add('hidden');
-
-            const payload = {
-                from_zone: document.getElementById('from_zone').value.trim(),
-                to_zone: document.getElementById('to_zone').value.trim(),
-                source_ip: document.getElementById('source_ip').value.trim(),
-                destination_ip: document.getElementById('destination_ip').value.trim(),
-                protocol: document.getElementById('protocol').value,
-                port: document.getElementById('port').value.trim()
-            };
-
-            // ולידציה בסיסית
-            if(!payload.source_ip || !payload.destination_ip) {
-                alert("נא להזין כתובות IP");
-                btn.disabled = false;
-                btn.innerText = "Run Diagnostic Match";
-                return;
-            }
-
-            try {
-                const res = await fetch('/run-policy-match', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
+            // איפוס והוספת אופציית ברירת מחדל ריקה (תשלח כ-"" לשרת)
+            fromEl.innerHTML = '<option value="">-- Without Zone (Optional) --</option>';
+            toEl.innerHTML = '<option value="">-- Without Zone (Optional) --</option>';
+            
+            // סינון any והוספת האזורים האמיתיים
+            data.zones
+                .filter(z => z.toLowerCase() !== 'any')
+                .forEach(z => {
+                    fromEl.add(new Option(z, z));
+                    toEl.add(new Option(z, z));
                 });
                 
-                const data = await res.json();
-                resultBox.classList.remove('hidden');
-                
-                const header = document.getElementById('res-header');
-                const content = document.getElementById('res-content');
+            loader.classList.add('hidden');
+        }
+    } catch (e) { 
+        console.error("Error loading zones:", e);
+    }
+}
+    /**
+     * JSDoc: מבצע את הרצת הדיאגנוסטיקה מול ה-Backend ומציג תוצאות.
+     * מטפל במניעת undefined על ידי שימוש ב-Payload המקורי כ-fallback.
+     */
+    async function runMatch() {
+        const btn = document.getElementById('run-btn');
+        const resultBox = document.getElementById('result-box');
+        const header = document.getElementById('res-header');
+        const content = document.getElementById('res-content');
+        
+        // הכנת ה-UI
+        btn.disabled = true;
+        btn.innerHTML = `<div class="spinner-custom w-5 h-5 border-2 border-white rounded-full"></div> בודק חוקה...`;
+        resultBox.classList.add('hidden');
 
-                if (data.status === 'success' && data.match) {
-                    resultBox.className = "mt-8 p-6 rounded-2xl border-emerald-500/30 bg-emerald-500/5 shadow-[0_0_30px_rgba(16,185,129,0.1)] block result-card";
-                    header.className = "text-xl font-bold mb-4 text-emerald-400";
-                    header.innerHTML = `<span>✅</span> Result: Match Found`;
-                    content.innerHTML = `
-                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700/50"><strong class="text-slate-500 block text-xs uppercase mb-1">Rule Name</strong> <span class="text-indigo-400 font-bold">${data.rule_name}</span></div>
-                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700/50"><strong class="text-slate-500 block text-xs uppercase mb-1">Action</strong> <span class="${data.action === 'allow' ? 'text-emerald-400' : 'text-rose-400'} font-bold">${data.action.toUpperCase()}</span></div>
-                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700/50"><strong class="text-slate-500 block text-xs uppercase mb-1">Source</strong> ${data.source}</div>
-                        <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700/50"><strong class="text-slate-500 block text-xs uppercase mb-1">Destination</strong> ${data.destination}</div>
-                    `;
-                } else if (data.status === 'success' && !data.match) {
-                    resultBox.className = "mt-8 p-6 rounded-2xl border-rose-500/30 bg-rose-500/5 shadow-[0_0_30px_rgba(244,63,94,0.1)] block result-card";
-                    header.className = "text-xl font-bold mb-4 text-rose-400 text-center";
-                    header.innerHTML = `<span>❌</span> No Match Found`;
-                    content.innerHTML = `<p class="col-span-2 text-slate-400 p-2 text-center">התעבורה אינה תואמת לאף חוק אבטחה קיים. היא תיחסם על ידי חוק ה-Implicit Deny.</p>`;
-                } else {
-                    throw new Error(data.message || "שגיאה בבדיקת החוקה");
-                }
-            } catch (e) {
-                alert("שגיאה: " + e.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = "Run Diagnostic Match";
-            }
+        const payload = {
+            from_zone: document.getElementById('from_zone').value.trim(),
+            to_zone: document.getElementById('to_zone').value.trim(),
+            source_ip: document.getElementById('source_ip').value.trim(),
+            destination_ip: document.getElementById('destination_ip').value.trim(),
+            protocol: document.getElementById('protocol').value,
+            port: document.getElementById('port').value.trim()
+        };
+
+        // ולידציה בסיסית
+        if(!payload.source_ip || !payload.destination_ip) {
+            alert("נא להזין כתובות IP תקינות");
+            btn.disabled = false;
+            btn.innerText = "Run Diagnostic Match";
+            return;
         }
 
-        window.onload = loadZones;
-    </script>
+        try {
+            const res = await fetch('/run-policy-match', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            
+            const data = await res.json();
+            
+            if (!res.ok) throw new Error(data.message || "שגיאה בביצוע הבדיקה");
+
+            resultBox.classList.remove('hidden');
+            
+            if (data.status === 'success' && data.match) {
+                // עיצוב הצלחה (Match Found)
+                resultBox.className = "mt-8 p-6 rounded-2xl border-emerald-500/30 bg-emerald-500/5 shadow-[0_0_30px_rgba(16,185,129,0.1)] block result-card";
+                header.className = "text-xl font-bold mb-4 text-emerald-400";
+                header.innerHTML = `<span>✅</span> Result: Match Found`;
+
+                // מניעת undefined: שימוש בנתוני ה-Payload אם ה-Backend לא החזיר שדות אלו
+                const srcDisplay = data.source || payload.source_ip;
+                const dstDisplay = data.destination || payload.destination_ip;
+                const action = (data.action || "allow").toUpperCase();
+
+                content.innerHTML = `
+                    <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700/50">
+                        <strong class="text-slate-500 block text-xs uppercase mb-1">Rule Name</strong> 
+                        <span class="text-indigo-400 font-bold">${data.rule_name}</span>
+                    </div>
+                    <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700/50">
+                        <strong class="text-slate-500 block text-xs uppercase mb-1">Action</strong> 
+                        <span class="${action === 'ALLOW' ? 'text-emerald-400' : 'text-rose-400'} font-bold">${action}</span>
+                    </div>
+                    <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700/50">
+                        <strong class="text-slate-500 block text-xs uppercase mb-1">Source</strong> 
+                        <span class="text-slate-200">${srcDisplay}</span>
+                    </div>
+                    <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-700/50">
+                        <strong class="text-slate-500 block text-xs uppercase mb-1">Destination</strong> 
+                        <span class="text-slate-200">${dstDisplay}</span>
+                    </div>
+                `;
+            } else {
+                // עיצוב חוסר התאמה (No Match)
+                resultBox.className = "mt-8 p-6 rounded-2xl border-rose-500/30 bg-rose-500/5 shadow-[0_0_30px_rgba(244,63,94,0.1)] block result-card";
+                header.className = "text-xl font-bold mb-4 text-rose-400 text-center";
+                header.innerHTML = `<span>❌</span> No Match Found`;
+                content.innerHTML = `<p class="col-span-2 text-slate-400 p-2 text-center">התעבורה אינה תואמת לאף חוק אבטחה קיים. היא תיחסם על ידי ה-Implicit Deny.</p>`;
+            }
+        } catch (e) {
+            alert("שגיאה: " + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Run Diagnostic Match";
+        }
+    }
+
+    // הפעלה בטעינת הדף
+    window.onload = loadZones;
+</script>
 </body>
 </html>

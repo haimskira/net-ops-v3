@@ -287,32 +287,55 @@ def get_job_status(job_id: int) -> Response:
 
 @ops_bp.route('/run-policy-match', methods=['POST'])
 def run_policy_match() -> Response:
-    """Tests traffic parameters against the firewall security engine."""
+    """
+    Tests traffic against the firewall. 
+    Dynamic XML: Omit <from>/<to> tags if zones are empty, mimicking CLI behavior.
+    """
     data = request.json or {}
     try:
         source = data.get("source_ip", "").strip()
         destination = data.get("destination_ip", "").strip()
+        from_zone = data.get("from_zone", "").strip()
+        to_zone = data.get("to_zone", "").strip()
         port = data.get("port", "443").strip()
-        
+        protocol = data.get("protocol", "6").strip()
+
+        # בניית XML דינמי - השמטת תגיות אם הערך ריק או 'any'
+        zone_tags = ""
+        if from_zone and from_zone.lower() != 'any':
+            zone_tags += f"<from>{from_zone}</from>"
+        if to_zone and to_zone.lower() != 'any':
+            zone_tags += f"<to>{to_zone}</to>"
+
         cmd = (f"<test><security-policy-match>"
+               f"{zone_tags}"
                f"<source>{source}</source><destination>{destination}</destination>"
-               f"<protocol>6</protocol><destination-port>{port}</destination-port>"
+               f"<protocol>{protocol}</protocol><destination-port>{port}</destination-port>"
+               f"<application>any</application>"
                f"</security-policy-match></test>")
         
-        url = f"https://{Config.FW_IP}/api/?type=op&cmd={cmd}&key={Config.API_KEY}&target-vsys=vsys1"
+        # בניית ה-URL עם vsys1 להבטחת הקשר חיפוש נכון
+        url = f"https://{Config.FW_IP}/api/?type=op&cmd={cmd}&key={Config.API_KEY}&vsys=vsys1"
+        
         r = requests.get(url, verify=False, timeout=15)
         xml_root = ET.fromstring(r.text)
         
+        if xml_root.get('status') == 'error':
+            return jsonify({"status": "error", "message": xml_root.findtext(".//msg") or "FW Error"}), 400
+
         entry = xml_root.find(".//entry")
         if entry is not None:
             return jsonify({
                 "status": "success", "match": True, 
-                "rule_name": entry.get("name"), "action": entry.findtext("action") or "allow"
+                "rule_name": entry.get("name"), "action": entry.findtext("action") or "allow",
+                "source": source, "destination": destination
             })
-        return jsonify({"status": "success", "match": False})
+            
+        return jsonify({"status": "success", "match": False, "source": source, "destination": destination})
+        
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
+    
 @ops_bp.route('/api/detect-zone', methods=['GET'])
 def detect_zone() -> Response:
     """Predicts firewall zone for an IP based on local interface subnet mapping."""

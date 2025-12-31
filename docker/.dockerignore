@@ -1,15 +1,30 @@
+# --- Python & Cache ---
 env/
 venv/
-__pycache__/
+**/__pycache__/
 *.pyc
-.git/
-.vscode/
-data/*.db
-data/*.db-wal
-data/*.db-shm
-data/*.json
-netops.db
-traffic_logs.db
+*.pyo
+*.pyd
+.pytest_cache/
+
+# --- Environment & Security ---
 .env
+.flaskenv
+.git/
+.gitignore
+
+# --- Database & Local Data ---
+# אנחנו רוצים שהקונטיינר יתחיל עם תיקייה ריקה או ימפה ווליום חיצוני
+data/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.json
+
+# --- Dev Tools & Metadata ---
+.vscode/
+.idea/
+*.md
 Dockerfile
 docker-compose.yml
