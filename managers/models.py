@@ -8,11 +8,18 @@ db_sql = SQLAlchemy()
 # טבלאות עזר לקשרים (Association Tables - Many-to-Many)
 # --------------------------------------------------------------------------
 
-# קשר בין קבוצות כתובות (Address Groups) לחבריהן (Address Objects/Groups)
+# קשר בין קבוצות כתובות (Address Groups) לחבריהן
 address_group_members = db_sql.Table(
     'address_group_members',
     db_sql.Column('parent_id', db_sql.Integer, db_sql.ForeignKey('address_objects.id'), primary_key=True),
     db_sql.Column('member_id', db_sql.Integer, db_sql.ForeignKey('address_objects.id'), primary_key=True)
+)
+
+# קשר בין קבוצות שירותים (Service Groups) לחבריהן - התיקון המרכזי
+service_group_members = db_sql.Table(
+    'service_group_members',
+    db_sql.Column('parent_id', db_sql.Integer, db_sql.ForeignKey('service_objects.id'), primary_key=True),
+    db_sql.Column('member_id', db_sql.Integer, db_sql.ForeignKey('service_objects.id'), primary_key=True)
 )
 
 # מיפוי אובייקטי מקור לחוקי אבטחה
@@ -36,16 +43,22 @@ rule_service_map = db_sql.Table(
     db_sql.Column('service_id', db_sql.Integer, db_sql.ForeignKey('service_objects.id'), primary_key=True)
 )
 
+# מיפוי אפליקציות לחוקי אבטחה
+rule_app_map = db_sql.Table(
+    'rule_app_map',
+    db_sql.Column('rule_id', db_sql.Integer, db_sql.ForeignKey('security_rules.id'), primary_key=True),
+    db_sql.Column('app_id', db_sql.Integer, db_sql.ForeignKey('application_objects.id'), primary_key=True)
+)
+
 # --------------------------------------------------------------------------
-# מודלים של תשתיות (Firewall Inventory Layer)
+# מודלים של תשתיות
 # --------------------------------------------------------------------------
 
 class AddressObject(db_sql.Model):
-    """מייצג אובייקט כתובת או קבוצת כתובות (תומך ברקורסיה)."""
     __tablename__ = 'address_objects'
     id = db_sql.Column(db_sql.Integer, primary_key=True)
     name = db_sql.Column(db_sql.String(255), unique=True, index=True, nullable=False)
-    type = db_sql.Column(db_sql.String(50))  # 'ip-netmask', 'ip-range', 'fqdn', 'group'
+    type = db_sql.Column(db_sql.String(50))
     value = db_sql.Column(db_sql.String(255), index=True)
     is_group = db_sql.Column(db_sql.Boolean, default=False)
     
@@ -58,16 +71,30 @@ class AddressObject(db_sql.Model):
     )
 
 class ServiceObject(db_sql.Model):
-    """מייצג אובייקט שירות (Port/Protocol)."""
     __tablename__ = 'service_objects'
     id = db_sql.Column(db_sql.Integer, primary_key=True)
     name = db_sql.Column(db_sql.String(255), unique=True, index=True, nullable=False)
     protocol = db_sql.Column(db_sql.String(10)) 
     port = db_sql.Column(db_sql.String(255))
     is_group = db_sql.Column(db_sql.Boolean, default=False)
+    
+    # הוספת קשר לחברי קבוצה כדי ש-resolve_object_content יעבוד
+    members = db_sql.relationship(
+        'ServiceObject', 
+        secondary=service_group_members,
+        primaryjoin=(service_group_members.c.parent_id == id),
+        secondaryjoin=(service_group_members.c.member_id == id),
+        backref='member_of'
+    )
+
+class ApplicationObject(db_sql.Model):
+    __tablename__ = 'application_objects'
+    id = db_sql.Column(db_sql.Integer, primary_key=True)
+    name = db_sql.Column(db_sql.String(255), unique=True, index=True, nullable=False)
+    value = db_sql.Column(db_sql.String(255)) # שונה מ-description ל-value לסנכרון תקין
+    is_group = db_sql.Column(db_sql.Boolean, default=False)
 
 class SecurityRule(db_sql.Model):
-    """מייצג חוק אבטחה (Policy) קיים בפיירוול."""
     __tablename__ = 'security_rules'
     id = db_sql.Column(db_sql.Integer, primary_key=True)
     name = db_sql.Column(db_sql.String(255), unique=True, index=True, nullable=False)
@@ -82,11 +109,9 @@ class SecurityRule(db_sql.Model):
     sources = db_sql.relationship('AddressObject', secondary=rule_source_map)
     destinations = db_sql.relationship('AddressObject', secondary=rule_dest_map)
     services = db_sql.relationship('ServiceObject', secondary=rule_service_map)
+    applications = db_sql.relationship('ApplicationObject', secondary=rule_app_map)
 
-# --------------------------------------------------------------------------
-# מודלים של ניהול בקשות (Workflow Layer)
-# --------------------------------------------------------------------------
-
+# שאר המודלים (RuleRequest, ObjectRequest, וכו') נשארים ללא שינוי
 class RuleRequest(db_sql.Model):
     __tablename__ = 'rule_requests'
     id = db_sql.Column(db_sql.Integer, primary_key=True)
@@ -111,7 +136,7 @@ class RuleRequest(db_sql.Model):
 class ObjectRequest(db_sql.Model):
     __tablename__ = 'object_requests'
     id = db_sql.Column(db_sql.Integer, primary_key=True)
-    obj_type = db_sql.Column(db_sql.String(30)) # 'address', 'service'
+    obj_type = db_sql.Column(db_sql.String(30))
     name = db_sql.Column(db_sql.String(100), nullable=False)
     value = db_sql.Column(db_sql.String(200))
     prefix = db_sql.Column(db_sql.String(10))
@@ -120,10 +145,6 @@ class ObjectRequest(db_sql.Model):
     status = db_sql.Column(db_sql.String(20), default='Pending')
     request_time = db_sql.Column(db_sql.DateTime, default=datetime.utcnow)
     admin_notes = db_sql.Column(db_sql.Text)
-
-# --------------------------------------------------------------------------
-# מודלים של מערכת ולוגים (System & Logs Layer)
-# --------------------------------------------------------------------------
 
 class AuditLog(db_sql.Model):
     __tablename__ = 'audit_logs'
@@ -143,7 +164,6 @@ class NetworkInterface(db_sql.Model):
     zone_name = db_sql.Column(db_sql.String(100))
 
 class TrafficLog(db_sql.Model):
-    """לוגי תעבורה - נשמרים בבסיס נתונים נפרד (logs)."""
     __bind_key__ = 'logs'
     __tablename__ = 'traffic_logs'
     id = db_sql.Column(db_sql.Integer, primary_key=True)

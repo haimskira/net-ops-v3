@@ -1,10 +1,38 @@
+# --- Python & Environment ---
 env/
+venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Environment Variables (Critical for Security) ---
 .env
+.flaskenv
+
+# --- Operating System Files ---
 .DS_Store
-netops.db
-data/
+Thumbs.db
+
+# --- Databases (SQLite) ---
+# התעלמות מכל בסיסי הנתונים כולל קבצי ה-WAL וה-SHM
 *.db
+*.db-wal
+*.db-shm
+*.db-journal
+netops.db
+traffic_logs.db
+
+# --- Data & Logs ---
+# התעלמות מתיקיית הנתונים הפעילה ומקבצי ה-JSON הישנים
+data/
 traffic/
-traffic.json
+*.json
+*.log
+
+# --- Editor Settings ---
+.vscode/
+.idea/

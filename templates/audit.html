@@ -2,185 +2,89 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>NetOps - System Audit Logs</title>
-    
+    <title>Audit Logs | Inventory Pro</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <style>
-        @font-face {
-            font-family: 'Assistant';
-            src: url("{{ url_for('static', filename='fonts/Assistant-Regular.ttf') }}") format('truetype');
-            font-weight: 400;
-        }
-        @font-face {
-            font-family: 'Assistant';
-            src: url("{{ url_for('static', filename='fonts/Assistant-Bold.ttf') }}") format('truetype');
-            font-weight: 700;
-        }
-
-        body { 
-            font-family: 'Assistant', sans-serif !important; 
-            background-color: #0f172a; 
-            color: #f8fafc; 
-            padding: 20px;
-            margin: 0;
-            height: 100vh;
-            display: flex;
-            flex-grow: 1;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
+        body { font-family: 'Assistant', sans-serif; background-color: #0f172a; color: #f8fafc; padding: 20px; margin: 0; }
         .glass-panel { 
             background: rgba(30, 41, 59, 0.7); 
             backdrop-filter: blur(12px); 
             border: 1px solid rgba(255,255,255,0.05); 
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
         }
-
-        .search-input { 
-            background: rgba(15, 23, 42, 0.6); 
-            border: 1px solid #334155; 
-            color: white; 
-            transition: all 0.2s;
+        .table-container { max-height: calc(100vh - 150px); overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; text-align: right; }
+        thead th { 
+            position: sticky; 
+            top: 0; 
+            background: #1e293b; 
+            padding: 15px; 
+            color: #94a3b8; 
+            font-size: 12px; 
+            border-bottom: 2px solid #334155;
+            z-index: 10;
         }
-        .search-input:focus { 
-            border-color: #6366f1; 
-            box-shadow: 0 0 15px rgba(99, 102, 241, 0.15);
-            outline: none;
+        tbody tr { border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.2s; }
+        tbody tr:hover { background: rgba(255,255,255,0.02); }
+        td { padding: 12px 15px; font-size: 13px; color: #cbd5e1; }
+        .timestamp { color: #6366f1; font-family: monospace; font-size: 12px; }
+        .user-tag { background: #334155; padding: 2px 8px; border-radius: 6px; font-weight: bold; color: #e2e8f0; }
+        .action-badge { 
+            padding: 4px 10px; 
+            border-radius: 8px; 
+            font-size: 11px; 
+            font-weight: bold; 
+            background: rgba(99, 102, 241, 0.1); 
+            color: #818cf8;
+            border: 1px solid rgba(99, 102, 241, 0.2);
         }
-
-        /* עיצוב שורות */
-        .audit-row { transition: background-color 0.2s; border-bottom: 1px solid rgba(51, 65, 85, 0.4); }
-        .audit-row:hover { background-color: rgba(99, 102, 241, 0.05); }
-
-        /* באדג'ים לפעולות */
-        .badge { padding: 2px 10px; border-radius: 999px; font-size: 10px; font-weight: 800; text-transform: uppercase; border: 1px solid transparent; }
-        .badge-approve { color: #10b981; background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.2); }
-        .badge-reject { color: #ef4444; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); }
-        .badge-sync { color: #6366f1; background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.2); }
-        .badge-default { color: #94a3b8; background: rgba(148, 163, 184, 0.1); border-color: rgba(148, 163, 184, 0.2); }
-
-        .custom-scroll::-webkit-scrollbar { width: 6px; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        
-        .dir-ltr { direction: ltr; text-align: left; }
     </style>
 </head>
-<body class="bg-transparent">
+<body>
 
-    <div class="mb-6 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
+    <div class="mb-6 flex justify-between items-center" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
         <div>
-            <h1 class="text-2xl font-bold text-indigo-400 flex items-center gap-3">
-                <span class="p-2 bg-indigo-500/10 rounded-lg text-xl">📜</span> יומן ביקורת מערכת
-            </h1>
-            <p class="text-slate-500 text-sm mt-1">תיעוד מלא של פעולות מנהלים ושינויי קונפיגורציה</p>
+            <h1 style="color: #818cf8; margin: 0;">יומן פעולות (Audit Logs)</h1>
+            <p style="color: #64748b; margin: 5px 0 0 0; font-size: 14px;">מעקב אחר שינויי קונפיגורציה ופעולות מנהל</p>
         </div>
-
-        <div class="relative w-full md:w-80">
-            <span class="absolute inset-y-0 right-3 flex items-center text-slate-500">🔍</span>
-            <input type="text" id="auditSearch" oninput="filterAudit()" 
-                   placeholder="חיפוש חופשי (משתמש, פעולה, משאב...)" 
-                   class="search-input w-full pr-10 pl-4 py-2.5 rounded-xl text-sm">
-        </div>
+        <button onclick="window.location.reload()" style="background: #334155; color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer;">רענן לוגים 🔄</button>
     </div>
 
-    <div class="flex-1 overflow-hidden glass-panel rounded-2xl flex flex-col shadow-2xl">
-        <div class="overflow-auto custom-scroll">
-            <table class="w-full text-right border-collapse">
-                <thead class="bg-slate-900/80 sticky top-0 z-20 border-b border-slate-700 shadow-sm">
-                    <tr class="text-slate-400 text-[11px] uppercase tracking-wider">
-                        <th class="p-4 w-40">זמן אירוע</th>
-                        <th class="p-4 w-32">משתמש</th>
-                        <th class="p-4 w-40">סוג פעולה</th>
-                        <th class="p-4 w-48">משאב / אובייקט</th>
-                        <th class="p-4">פרטים טכניים</th>
+    <div class="glass-panel">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 180px;">זמן</th>
+                        <th style="width: 120px;">משתמש</th>
+                        <th style="width: 150px;">פעולה</th>
+                        <th style="width: 150px;">סוג משאב</th>
+                        <th>שם המשאב / פרטים</th>
                     </tr>
                 </thead>
-                <tbody id="audit-body">
-                    {% if logs %}
-                        {% for log in logs %}
-                        <tr class="audit-row text-sm">
-                            <td class="p-4 text-slate-500 font-mono text-xs dir-ltr">
-                                {{ log.timestamp.strftime('%d/%m/%Y %H:%M:%S') }}
-                            </td>
-                            <td class="p-4">
-                                <div class="flex items-center gap-2">
-                                    <span class="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] border border-slate-600">👤</span>
-                                    <span class="font-bold text-slate-200">{{ log.user }}</span>
-                                </div>
-                            </td>
-                            <td class="p-4">
-                                {% set action = log.action | upper %}
-                                <span class="badge 
-                                    {% if 'APPROVE' in action %}badge-approve
-                                    {% elif 'REJECT' in action %}badge-reject
-                                    {% elif 'SYNC' in action %}badge-sync
-                                    {% else %}badge-default{% endif %}">
-                                    {{ log.action }}
-                                </span>
-                            </td>
-                            <td class="p-4 font-mono text-xs text-indigo-300">
-                                {{ log.resource_name or 'System' }}
-                            </td>
-                            <td class="p-4 text-slate-400 text-xs italic leading-relaxed">
-                                {{ log.details or '-' }}
-                            </td>
-                        </tr>
-                        {% endfor %}
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td class="timestamp">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td><span class="user-tag">{{ log.user }}</span></td>
+                        <td><span class="action-badge">{{ log.action }}</span></td>
+                        <td style="color: #94a3b8;">{{ log.resource_type }}</td>
+                        <td>
+                            <div style="font-weight: bold; color: #f1f5f9;">{{ log.resource_name }}</div>
+                            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">{{ log.details }}</div>
+                        </td>
+                    </tr>
                     {% else %}
-                        <tr id="empty-state">
-                            <td colspan="5" class="p-20 text-center">
-                                <div class="opacity-20 text-6xl mb-4">📭</div>
-                                <p class="text-slate-500 font-medium italic">לא נמצאו פעולות ביומן הביקורת.</p>
-                            </td>
-                        </tr>
-                    {% endif %}
+                    <tr>
+                        <td colspan="5" style="text-align: center; padding: 40px; color: #475569;">לא נמצאו פעולות ביומן</td>
+                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
 
-    <div class="mt-4 flex justify-between items-center px-2 shrink-0">
-        <div class="text-[10px] text-slate-600 font-mono uppercase tracking-widest">
-            Last updated: {{ now if now else 'Live' }}
-        </div>
-        <div id="row-count" class="text-xs text-slate-500 bg-slate-800/50 px-3 py-1 rounded-lg border border-slate-700">
-            מציג {{ logs|length }} רשומות
-        </div>
-    </div>
-
-    <script>
-        /**
-         * מסנן את טבלת הביקורת בזמן אמת לפי קלט המשתמש.
-         * @function filterAudit
-         */
-        function filterAudit() {
-            const input = document.getElementById('auditSearch');
-            const filter = input.value.toLowerCase();
-            const tbody = document.getElementById('audit-body');
-            const rows = tbody.getElementsByTagName('tr');
-            let visibleCount = 0;
-
-            for (let i = 0; i < rows.length; i++) {
-                if (rows[i].id === 'empty-state') continue;
-
-                const text = rows[i].textContent.toLowerCase();
-                if (text.includes(filter)) {
-                    rows[i].style.display = "";
-                    visibleCount++;
-                } else {
-                    rows[i].style.display = "none";
-                }
-            }
-
-            document.getElementById('row-count').innerText = `מציג ${visibleCount} רשומות`;
-        }
-
-        /**
-         * עדכון אוטומטי של הדף (פעם ב-5 דקות)
-         */
-        setTimeout(() => {
-            window.location.reload();
-        }, 300000);
-    </script>
 </body>
 </html>

@@ -5,6 +5,7 @@
     <title>NET-OPS Admin Portal</title>
     
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
     <style>
         @font-face {
             font-family: 'Assistant';
@@ -12,13 +13,7 @@
             font-weight: 400;
             font-style: normal;
         }
-        @font-face {
-            font-family: 'Assistant';
-            src: url("{{ url_for('static', filename='fonts/Assistant-Bold.ttf') }}") format('truetype');
-            font-weight: 700;
-            font-style: normal;
-        }
-        body { font-family: 'Assistant', sans-serif !important; background-color: #0f172a; }
+        body { font-family: 'Assistant', sans-serif !important; background-color: #0f172a; margin: 0; }
         
         .fade-in { animation: fadeIn 0.3s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -29,8 +24,11 @@
         .network-pulse { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); animation: pulse 2s infinite; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); } 70% { box-shadow: 0 0 0 20px rgba(99, 102, 241, 0); } 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); } }
         
-        /* עיצוב ה-Iframe והבטחת תפיסת גובה מלאה */
         iframe { width: 100%; height: 100%; border: none; border-radius: 1.5rem; background-color: #0f172a; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+        
+        /* Utility for sidebar button sizing */
+        .nav-btn { width: 100%; text-align: right; border: none; cursor: pointer; color: #94a3b8; }
+        .nav-btn:hover { color: white; }
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
@@ -121,6 +119,10 @@
                     <div class="p-2 bg-purple-600 rounded-lg">📦</div>
                     <span class="font-bold text-xs">אישור אובייקטים</span>
                 </button>
+                <button id="btn-audit-logs" onclick="toggleComponent('audit-logs')" class="nav-btn flex items-center gap-3 p-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition-all group border border-slate-700/50">
+                    <div class="p-2 bg-slate-600 rounded-lg group-hover:bg-indigo-500 transition-colors">📜</div>
+                    <span class="font-bold text-xs">Audit Logs</span>
+                </button>
             </div>
             {% endif %}
         </aside>
@@ -140,63 +142,71 @@
             <div id="palo-alto-view" class="hidden h-full"><iframe id="rule-manager-iframe" src="/palo-manager"></iframe></div>
             <div id="object-creator-view" class="hidden h-full"><iframe id="object-creator-iframe" src="/object-creator"></iframe></div>
             <div id="policy-match-view" class="hidden h-full"><iframe src="/policy-match-tool"></iframe></div>
-            
             <div id="policy-inventory-view" class="hidden h-full"><iframe id="policy-inventory-iframe" src="about:blank"></iframe></div>
-            
             <div id="log-viewer-view" class="hidden h-full"><iframe id="traffic-logs-iframe" src="about:blank"></iframe></div>
             <div id="grafana-view" class="hidden h-full"><iframe src="http://10.3.0.40:3000"></iframe></div>
             <div id="my-requests-view" class="hidden h-full"><iframe src="/my-requests-tool"></iframe></div>
             <div id="my-objects-view" class="hidden h-full"><iframe src="/my-objects-tool"></iframe></div>
             <div id="admin-approval-view" class="hidden h-full"><iframe id="approval-iframe" src="/admin-approval-tool"></iframe></div>
             <div id="object-approval-view" class="hidden h-full"><iframe src="/object-approval-tool"></iframe></div>
+            <div id="audit-logs-view" class="hidden h-full"><iframe id="audit-logs-iframe" src="about:blank"></iframe></div>
 
         </main>
     </div>
 
     <script>
+        /**
+         * @constant {string[]} views - List of all available view IDs for management.
+         */
         const views = [
             'palo-alto-view', 'object-creator-view', 'policy-match-view', 
             'log-viewer-view', 'my-requests-view', 'my-objects-view', 
             'admin-approval-view', 'object-approval-view', 'grafana-view',
-            'policy-inventory-view'
+            'policy-inventory-view', 'audit-logs-view'
         ];
 
         /**
-         * פונקציה מרכזית לניהול הניווט בין הרכיבים.
-         * @param {string} compId 
+         * Toggles between different dashboard components with Lazy Loading support.
+         * @param {string} compId - The component identifier (e.g., 'palo-alto', 'log-viewer').
          */
         function toggleComponent(compId) {
             closeAll();
             const view = document.getElementById(compId + '-view');
             const btn = document.getElementById('btn-' + compId);
             
-            // Lazy Loading עבור הלוגים
-            const logsFrame = document.getElementById('traffic-logs-iframe');
+            // --- Lazy Loading Logic ---
+            
+            // Traffic Logs
             if (compId === 'log-viewer') {
-                if (logsFrame && (logsFrame.src === "about:blank" || !logsFrame.src.includes('/log-viewer'))) {
-                    logsFrame.src = "/log-viewer"; 
-                }
+                const logsFrame = document.getElementById('traffic-logs-iframe');
+                if (logsFrame && logsFrame.src === "about:blank") logsFrame.src = "/log-viewer"; 
             }
 
-            // Lazy Loading עבור ה-Policy Inventory החדש
-            const inventoryFrame = document.getElementById('policy-inventory-iframe');
+            // Policy Inventory
             if (compId === 'policy-inventory') {
-                if (inventoryFrame && (inventoryFrame.src === "about:blank" || !inventoryFrame.src.includes('/policy-inventory'))) {
-                    inventoryFrame.src = "/policy-inventory"; 
-                }
+                const invFrame = document.getElementById('policy-inventory-iframe');
+                if (invFrame && invFrame.src === "about:blank") invFrame.src = "/policy-inventory"; 
             }
 
+            // Audit Logs
+            if (compId === 'audit-logs') {
+                const auditFrame = document.getElementById('audit-logs-iframe');
+                if (auditFrame && auditFrame.src === "about:blank") auditFrame.src = "/audit-logs"; 
+            }
+
+            // Display UI
             if (view) {
                 view.classList.remove('hidden');
                 document.getElementById('welcome-view').classList.add('hidden');
             }
-            if (btn) {
-                btn.classList.add('btn-active');
-            }
+            if (btn) btn.classList.add('btn-active');
         }
 
         window.toggleComponent = toggleComponent;
 
+        /**
+         * Hides all views and shows the welcome screen.
+         */
         function closeAll() {
             views.forEach(id => {
                 const el = document.getElementById(id);
@@ -206,6 +216,9 @@
             document.getElementById('welcome-view').classList.remove('hidden');
         }
 
+        /**
+         * PostMessage Listener for cross-iframe communication.
+         */
         window.addEventListener('message', function(event) {
             if (event.data.type === 'UPDATE_COUNTER') {
                 const targetId = event.data.source === 'rules' ? 'nav-rule-badge' : 'nav-obj-badge';
@@ -224,6 +237,9 @@
             }
         });
 
+        /**
+         * Periodically updates the pending approval badges from the API.
+         */
         async function updateBadges() {
             try {
                 const [rRes, oRes] = await Promise.all([
@@ -247,6 +263,7 @@
             }
         }
         
+        // --- Initialization ---
         setInterval(updateBadges, 15000);
         window.onload = updateBadges;
     </script>

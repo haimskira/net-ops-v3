@@ -1,6 +1,7 @@
 """
 Expert Full-Stack Software Architecture: Operations & Monitoring Routes.
 Handles Deep Object Resolution for Hover Tooltips and Smart Search.
+Zero Truncation Policy: Full Functional File.
 """
 
 # 1. Standard Library Imports
@@ -8,12 +9,13 @@ import logging
 import time
 import traceback
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 
 # 2. Third-Party Library Imports
 import requests
 from flask import Blueprint, Response, jsonify, render_template, request, session
+from sqlalchemy.orm import joinedload, selectinload  # הוספת selectinload לטעינת חברי קבוצה
 
 # 3. Pan-OS / Firewall SDK Imports (Aliases to prevent SQLAlchemy conflicts)
 from panos.network import Zone
@@ -21,6 +23,7 @@ from panos.objects import (
     AddressGroup as PanAddressGroup, 
     AddressObject as PanAddressObject, 
     ServiceObject as PanServiceObject, 
+    ServiceGroup as PanServiceGroup,  # הוספת הייבוא החסר
     Tag as PanTag
 )
 from panos.policies import SecurityRule as PanSecurityRule, Rulebase
@@ -39,8 +42,10 @@ from managers.models import (
     AuditLog, 
     SecurityRule, 
     ServiceObject, 
+    ApplicationObject,
     TrafficLog, 
-    db_sql
+    db_sql,
+    rule_app_map
 )
 from managers.sync_manager import SyncManager
 
@@ -51,25 +56,28 @@ ops_bp = Blueprint('ops', __name__)
 # I. Helper Functions (Deep Resolution Logic)
 # --------------------------------------------------------------------------
 
-def resolve_object_content(obj: Any) -> List[str]:
+def resolve_object_content(obj: Any, depth: int = 0) -> List[str]:
     """
-    פונקציה רקורסיבית ששולפת אך ורק את התוכן הטכני (IP/Port).
-    משמשת לחיפוש החכם ולמערכת ה-Tooltip ב-Hover.
+    פונקציה רקורסיבית ששולפת את התוכן הטכני (IP/Port/App).
+    מעודכנת לפתרון בעיית ה-ANY בקבוצות ע"י שליפה רקורסיבית של חברים.
     """
-    if not obj: 
+    if not obj or depth > 5: # הגנה מפני רקורסיה אינסופית
         return []
         
     if not getattr(obj, 'is_group', False):
-        # מחלץ IP מכתובת (field: value) או פורט משירות (field: port)
+        # שליפת הערך הטכני לפי סוג האובייקט
         val = getattr(obj, 'value', '') or getattr(obj, 'port', '')
-        # מחזירים רק אם הערך קיים ואינו 'any'
-        return [str(val)] if (val and str(val).lower() != 'any') else []
+        
+        # סינון ערכים לא טכניים שעלולים להגיע מה-Firewall
+        if val and str(val).lower() not in ['any', 'group', 'application-default']:
+            return [str(val)]
+        return []
     
-    # רקורסיה לקבוצות (Address Groups / Service Groups)
     res = []
+    # שליפת רשימת החברים מתוך הקשר (Relationship) - דורש Eager Loading בשאילתה
     members = getattr(obj, 'members', [])
     for m in members:
-        res.extend(resolve_object_content(m))
+        res.extend(resolve_object_content(m, depth + 1))
         
     return list(set(res)) # הסרת כפילויות
 
@@ -83,11 +91,10 @@ def log_viewer_page() -> str:
     return render_template('log_viewer.html')
 
 @ops_bp.route('/audit-logs')
-def audit_logs_page() -> str:
-    """Renders System Audit Logs (Admin only)."""
+def audit_logs_page() -> Union[str, Response]:
+    """רק אדמין יכול לראות לוגי מערכת."""
     if not is_admin_check():
-        return render_template('error.html', message="Unauthorized Access"), 403
-    
+        return render_template('error.html', message="גישה ללוגי ביקורת שמורה למנהלים בלבד"), 403
     try:
         logs = AuditLog.query.order_by(AuditLog.timestamp.desc()).limit(200).all()
         return render_template('audit.html', logs=logs)
@@ -97,11 +104,8 @@ def audit_logs_page() -> str:
 
 @ops_bp.route('/policy-inventory')
 def policy_inventory_page() -> str:
-    """Renders the Firewall Policy Inventory dashboard."""
-    if not is_admin_check():
-        return render_template('error.html', message="Unauthorized Access"), 403
+    """Renders the Firewall Policy Inventory dashboard (Open to all authenticated users)."""
     return render_template('policy_viewer.html')
-
 
 # --------------------------------------------------------------------------
 # III. API Routes - Logging (Database Driven)
@@ -132,7 +136,7 @@ def get_live_logs() -> Response:
 
 @ops_bp.route('/api/clear-logs', methods=['POST'])
 def clear_logs() -> Response:
-    """Clears the traffic logs table in the database."""
+    """Clears the traffic logs table in the database (Admin only)."""
     if not is_admin_check():
         return jsonify({"status": "error", "message": "Unauthorized"}), 403
     try:
@@ -151,25 +155,28 @@ def clear_logs() -> Response:
 @ops_bp.route('/get-all-policies')
 def get_all_policies() -> Response:
     """
-    שליפת כל החוקים מה-DB המקומי.
-    כולל הצלבה (Cross-Reference) של שמות אובייקטים לערכי IP/Port.
+    שליפת חוקים עם טעינה עמוקה של חברי קבוצות למניעת באג ה-ANY.
+    משתמש ב-selectinload כדי למשוך את ה-members של ה-ServiceObject וה-AddressObject.
     """
     try:
-        rules = SecurityRule.query.all()
-        formatted_rules = []
+        # שימוש ב-JoinedLoad ו-SelectInLoad לפתרון בעיית חברי הקבוצות
+        rules = SecurityRule.query.options(
+            joinedload(SecurityRule.sources).selectinload(AddressObject.members),
+            joinedload(SecurityRule.destinations).selectinload(AddressObject.members),
+            joinedload(SecurityRule.services).selectinload(ServiceObject.members),
+            joinedload(SecurityRule.applications)
+        ).all()
         
+        formatted_rules = []
         for r in rules:
             def format_collection(obj_list):
-                if not obj_list:
-                    return [{"name": "any", "value": "any", "is_group": False}]
-                
+                if not obj_list: return []
                 output = []
                 for o in obj_list:
-                    # שימוש בפונקציה המאוחדת resolve_object_content
                     tech_vals = resolve_object_content(o)
                     output.append({
                         "name": o.name,
-                        "value": ", ".join(tech_vals) if tech_vals else "No IP in DB",
+                        "value": ", ".join(tech_vals) if tech_vals else o.name,
                         "is_group": getattr(o, 'is_group', False)
                     })
                 return output
@@ -181,12 +188,12 @@ def get_all_policies() -> Response:
                 "sources": format_collection(r.sources),
                 "destinations": format_collection(r.destinations),
                 "services": format_collection(r.services),
+                "applications": format_collection(r.applications),
                 "action": r.action or 'allow'
             })
         return jsonify(formatted_rules)
     except Exception as e:
-        logging.error(f"Inventory API Error: {str(e)}")
-        traceback.print_exc()
+        logging.error(f"Inventory Fetch Error: {str(e)}")
         return jsonify([]), 500
     
 
@@ -321,32 +328,43 @@ def detect_zone() -> Response:
 
 @ops_bp.route('/api/sync/firewall', methods=['POST'])
 def trigger_firewall_sync() -> Response:
-    """Manually refreshes the local DB inventory from live Firewall config."""
+    """סנכרון ידני של בסיס הנתונים מול הפיירוול (Admin only)."""
     if not is_admin_check():
         return jsonify({"status": "error", "message": "Admin only"}), 403
-
     try:
         fw = get_fw_connection()
         rb = Rulebase()
         fw.add(rb)
         
+        # שליפת אובייקטים וקבוצות שירותים/כתובות לסנכרון מלא
+        addr_objs = PanAddressObject.refreshall(fw)
+        addr_groups = PanAddressGroup.refreshall(fw)
+        svc_objs = PanServiceObject.refreshall(fw)
+        svc_groups = PanServiceGroup.refreshall(fw)
+        rules_objs = PanSecurityRule.refreshall(rb)
+        
+        found_apps = set()
+        for r in rules_objs:
+            apps = r.application
+            if isinstance(apps, list): found_apps.update(apps)
+            elif apps: found_apps.add(apps)
+        
+        apps_payload = [{"name": app, "value": "System", "is_group": False} for app in found_apps]
+
         fw_config = {
-            'address': [obj.about() for obj in PanAddressObject.refreshall(fw)],
-            'address-group': [obj.about() for obj in PanAddressGroup.refreshall(fw)],
-            'service': [obj.about() for obj in PanServiceObject.refreshall(fw)],
-            'rules': [obj.about() for obj in PanSecurityRule.refreshall(rb)]
+            'address': [obj.about() for obj in addr_objs],
+            'address-group': [obj.about() for obj in addr_groups],
+            'service': [obj.about() for obj in svc_objs],
+            'service-group': [obj.about() for obj in svc_groups],
+            'rules': [obj.about() for obj in rules_objs],
+            'applications': apps_payload
         }
 
         sync_mgr = SyncManager(fw)
         if sync_mgr.sync_all(fw_config):
-            audit = AuditLog(
-                user=get_username(), action="MANUAL_SYNC", resource_type="System",
-                resource_name="Firewall Inventory", details="Manual refresh of policy inventory."
-            )
-            db_sql.session.add(audit)
+            db_sql.session.add(AuditLog(user=get_username(), action="MANUAL_SYNC", resource_name="Inventory"))
             db_sql.session.commit()
-            return jsonify({"status": "success", "message": "הסנכרון הושלם בהצלחה!"})
-        return jsonify({"status": "error", "message": "Sync failed."}), 409
+            return jsonify({"status": "success", "message": "סנכרון הושלם בהצלחה!"})
+        return jsonify({"status": "error", "message": "Sync failed"}), 409
     except Exception as e:
-        db_sql.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500

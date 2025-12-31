@@ -16,7 +16,7 @@
         .filter-input { background: #1e293b; border: 1px solid #334155; color: white; font-size: 11px; padding: 6px 10px; border-radius: 8px; width: 100%; outline: none; }
         .filter-input:focus { border-color: #6366f1; }
 
-        /* --- מערכת Tooltip בעיצוב אישי --- */
+        /* --- Tooltip System --- */
         .obj-tag { 
             position: relative;
             display: inline-flex; 
@@ -29,7 +29,6 @@
             cursor: help;
         }
         
-        /* הבועה שקופצת ב-Hover */
         .obj-tag::after {
             content: attr(data-tooltip);
             position: absolute;
@@ -53,16 +52,15 @@
             border: 1px solid rgba(255,255,255,0.2);
         }
 
-        .obj-tag:hover::after {
-            opacity: 1;
-            visibility: visible;
-        }
+        .obj-tag:hover::after { opacity: 1; visibility: visible; }
 
-        .obj-group { border-right-color: #6366f1; }
-        .obj-host { border-right-color: #10b981; }
+        /* Color Coding */
+        .obj-group { border-right-color: #6366f1; }  /* Group: Blue */
+        .obj-host { border-right-color: #10b981; }   /* Host: Green */
+        .obj-app { border-right-color: #a855f7; }    /* App: Purple */
+        
         .obj-name { font-size: 11px; font-weight: bold; color: #f1f5f9; }
         
-        /* סטטוסים צבעוניים */
         .badge-allow { color: #10b981; border: 1px solid #10b981; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
         .badge-deny { color: #ef4444; border: 1px solid #ef4444; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
     </style>
@@ -72,7 +70,7 @@
     <div class="mb-6 flex justify-between items-end shrink-0">
         <div>
             <h1 class="text-2xl font-bold text-indigo-400 italic">Inventory Pro</h1>
-            <p class="text-slate-500 text-sm">העבר עכבר על אובייקט לצפייה בכתובות ה-IP שלו</p>
+            <p class="text-slate-500 text-sm">ניהול חוקה ואינוונטר - הצגת רזולוציית אובייקטים מלאה</p>
         </div>
         <div class="flex gap-3">
             <span id="row-count" class="bg-slate-800 px-4 py-2 rounded-xl text-xs font-bold border border-slate-700 text-slate-400">0 חוקים</span>
@@ -92,6 +90,7 @@
                         <th>Source Objects</th>
                         <th>Dest Objects</th>
                         <th>Service</th>
+                        <th>Application</th>
                         <th class="w-20">Action</th>
                     </tr>
                     <tr class="bg-slate-900/50">
@@ -101,17 +100,21 @@
                         <th><input type="text" class="filter-input" data-col="sources" placeholder="IP או שם..."></th>
                         <th><input type="text" class="filter-input" data-col="destinations" placeholder="IP או שם..."></th>
                         <th><input type="text" class="filter-input" data-col="services" placeholder="פורט..."></th>
+                        <th><input type="text" class="filter-input" data-col="applications" placeholder="אפליקציה..."></th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody id="policy-body" class="divide-y divide-slate-800/50">
-                    <tr><td colspan="7" class="p-20 text-center text-slate-500 italic">טוען נתונים...</td></tr>
+                    <tr><td colspan="8" class="p-20 text-center text-slate-500 italic">טוען נתונים...</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
 
     <script>
+        /**
+         * מפעיל סנכרון עמוק מול ה-API של הפיירוול.
+         */
         async function triggerDeepSync() {
             const btn = document.getElementById('sync-btn');
             const originalText = btn.innerText;
@@ -132,45 +135,67 @@
 
         let allPolicies = [];
 
+        /**
+         * טוען את החוקים מה-Database המקומי.
+         */
         async function loadPolicies() {
             const body = document.getElementById('policy-body');
-            body.innerHTML = '<tr><td colspan="7" class="p-20 text-center text-indigo-400 animate-pulse italic">טוען מה-DB...</td></tr>';
+            body.innerHTML = '<tr><td colspan="8" class="p-20 text-center text-indigo-400 animate-pulse italic">טוען מה-DB...</td></tr>';
             try {
                 const res = await fetch('/get-all-policies');
                 allPolicies = await res.json();
                 renderTable(allPolicies);
-            } catch (e) { console.error(e); }
+            } catch (e) { console.error("Load Error:", e); }
         }
 
+        /**
+         * מרנדר את טבלת החוקים לתוך ה-DOM.
+         */
         function renderTable(policies) {
             const body = document.getElementById('policy-body');
             document.getElementById('row-count').innerText = `${policies.length} חוקים`;
+            
+            if (policies.length === 0) {
+                body.innerHTML = '<tr><td colspan="8" class="p-20 text-center text-slate-500">לא נמצאו חוקים התואמים לחיפוש</td></tr>';
+                return;
+            }
+
             body.innerHTML = policies.map(p => {
-                // בחירת מחלקה עיצובית לפי ה-Action
-                const actionClass = (p.action.toLowerCase() === 'allow') ? 'badge-allow' : 'badge-deny';
+                const actionClass = (p.action && p.action.toLowerCase() === 'allow') ? 'badge-allow' : 'badge-deny';
                 
                 return `
-                    <tr>
+                    <tr class="hover:bg-slate-800/30 transition-colors">
                         <td class="p-4 font-bold text-indigo-300 truncate max-w-xs">${p.name}</td>
                         <td class="p-4 text-slate-400">${p.from}</td>
                         <td class="p-4 text-slate-400">${p.to}</td>
                         <td class="p-2">${renderTags(p.sources)}</td>
                         <td class="p-2">${renderTags(p.destinations)}</td>
                         <td class="p-2">${renderTags(p.services, true)}</td>
+                        <td class="p-2">${renderTags(p.applications, false, 'app')}</td>
                         <td class="p-4 text-center"><span class="${actionClass}">${p.action}</span></td>
                     </tr>
                 `;
             }).join('');
         }
 
-        function renderTags(objs, isSvc = false) {
+        /**
+         * מייצר תגיות ויזואליות לאובייקטים (עם Tooltip).
+         */
+        function renderTags(objs, isSvc = false, forceType = null) {
+            if (!objs || objs.length === 0) return `<span class="text-slate-600 text-xs italic">any</span>`;
+            
             return `<div class="flex flex-wrap gap-1">` + objs.map(o => {
-                const typeClass = o.is_group ? 'obj-group' : 'obj-host';
+                let typeClass = o.is_group ? 'obj-group' : 'obj-host';
+                if (forceType === 'app') typeClass = 'obj-app';
+                
                 const tooltipText = o.value || 'מידע לא זמין';
                 return `<div class="obj-tag ${typeClass}" data-tooltip="תוכן: ${tooltipText}"><span class="obj-name">${o.name}</span></div>`;
             }).join('') + `</div>`;
         }
 
+        /**
+         * פילטר דינמי לטבלה (Client-side).
+         */
         function applyFilters() {
             const inputs = Array.from(document.querySelectorAll('.filter-input'));
             const filtered = allPolicies.filter(p => {
@@ -178,8 +203,12 @@
                     const val = input.value.toLowerCase().trim();
                     if (!val) return true;
                     const col = input.dataset.col;
+                    
                     if (Array.isArray(p[col])) {
-                        return p[col].some(o => o.name.toLowerCase().includes(val) || (o.value && o.value.toLowerCase().includes(val)));
+                        return p[col].some(o => 
+                            o.name.toLowerCase().includes(val) || 
+                            (o.value && o.value.toLowerCase().includes(val))
+                        );
                     }
                     return String(p[col]).toLowerCase().includes(val);
                 });
@@ -187,6 +216,7 @@
             renderTable(filtered);
         }
 
+        // Event Listeners
         document.querySelectorAll('.filter-input').forEach(i => i.addEventListener('input', applyFilters));
         window.onload = loadPolicies;
     </script>
