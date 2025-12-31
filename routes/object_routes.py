@@ -25,11 +25,7 @@ from panos.objects import (
 
 objects_bp = Blueprint('objects', __name__)
 
-def validate_object_input(obj_type: str, value: str, protocol: str = None) -> (bool, str):
-    """
-    מבצע ולידציה לערכים לפני כניסה לבסיס הנתונים.
-    שימוש בספריית ipaddress לכתובות ו-isnumeric לפורטים.
-    """
+def validate_object_input(obj_type: str, value: str, protocol: str = None) -> tuple[bool, str]:
     if not value:
         return False, "ערך האובייקט אינו יכול להיות ריק."
 
@@ -225,23 +221,48 @@ def approve_object(obj_id: int):
         traceback.print_exc()
         db_sql.session.rollback()
         return jsonify({"status": "error", "message": f"שגיאת מערכת: {str(e)}"}), 500
-    
-        
+
+
 @objects_bp.route('/reject-object/<int:obj_id>', methods=['POST'])
 def reject_object(obj_id: int):
-    """דחיית בקשת אובייקט."""
-    if not is_admin_check(): return jsonify({"status": "error"}), 403
+    """
+    דחיית בקשת אובייקט עם תיעוד Audit Log מלא.
+    """
+    if not is_admin_check(): 
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
     
     data = request.json or {}
     obj_req = ObjectRequest.query.get(obj_id)
+    
     if obj_req:
+        reason = data.get('reason', 'נדחה על ידי אדמין')
         obj_req.status = 'Rejected'
-        obj_req.admin_notes = data.get('reason', 'נדחה על ידי אדמין')
+        obj_req.admin_notes = reason
         obj_req.processed_by = get_username()
-        db_sql.session.add(AuditLog(user=get_username(), action="REJECT_OBJECT", resource_name=obj_req.name))
+        
+        # מיפוי סוג המשאב לתיעוד (מניעת None)
+        type_labels = {
+            'address': 'Address Object',
+            'address-group': 'Address Group',
+            'service': 'Service Object',
+            'service-group': 'Service Group'
+        }
+        res_type = type_labels.get(obj_req.obj_type, "Infrastructure Object")
+
+        # הוספת התיעוד ל-Audit Log
+        audit_entry = AuditLog(
+            user=get_username(),
+            action="REJECT_OBJECT",
+            resource_type=res_type,
+            resource_name=obj_req.name,
+            details=f"Reason: {reason} | Original Value: {obj_req.value}"
+        )
+        db_sql.session.add(audit_entry)
+        
         db_sql.session.commit()
         return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 404
+        
+    return jsonify({"status": "error", "message": "Request not found"}), 404
 
 @objects_bp.route('/update-pending-object/<int:obj_id>', methods=['POST'])
 def update_pending_object(obj_id: int):
