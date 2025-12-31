@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from typing import Dict, Optional
 
 # טעינת משתני סביבה
-load_dotenv()
+load_dotenv(override=True)
 
 class Config:
     """
