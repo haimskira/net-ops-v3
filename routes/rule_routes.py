@@ -219,13 +219,13 @@ def check_shadow():
 
 @rules_bp.route('/approve-single-rule/<int:rule_id>', methods=['POST'])
 def approve_single_rule(rule_id: int):
-    """אישור חוקה: דחיפה לפיירוול ועדכון Inventory (כולל טיפול ב-UNIQUE constraints)."""
+    """אישור חוקה: דחיפה לפיירוול ועדכון Inventory עם תיעוד Audit מלא ללא None."""
     if not is_admin_check(): 
         return jsonify({"status": "error", "message": "Unauthorized"}), 403
     
-    rule_req = RuleRequest.query.get(rule_id)
-    if not rule_req or rule_req.status != 'Pending':
-        return jsonify({"status": "error", "message": "בקשה לא נמצאה או כבר טופלה"}), 404
+    rule_req = RuleRequest.query.get_or_404(rule_id)
+    if rule_req.status != 'Pending':
+        return jsonify({"status": "error", "message": "בקשה כבר טופלה"}), 400
 
     try:
         # 1. הכנת נתונים
@@ -254,7 +254,7 @@ def approve_single_rule(rule_id: int):
         rb.add(new_fw_rule)
         new_fw_rule.create()
 
-        # 3. עדכון Inventory מקומי (Idempotent Upsert)
+        # 3. עדכון Inventory מקומי
         synced_rule = SecurityRule.query.filter_by(name=final_rule_name).first()
         if not synced_rule:
             synced_rule = SecurityRule(
@@ -263,32 +263,19 @@ def approve_single_rule(rule_id: int):
                 tag_name=rule_req.tag, expire_at=expiration
             )
             db_sql.session.add(synced_rule)
-        else:
-            synced_rule.from_zone = rule_req.from_zone or 'any'
-            synced_rule.to_zone = rule_req.to_zone or 'any'
-            synced_rule.expire_at = expiration
 
-        db_sql.session.flush()
-
-        # 4. קישור אובייקטים (Case-Insensitive Relation Mapping)
-        def robust_link(identifier, target_list):
-            if not identifier or identifier.lower() == 'any': return
-            obj = AddressObject.query.filter(
-                or_(func.lower(AddressObject.name) == identifier.lower(),
-                    func.lower(AddressObject.value) == identifier.lower())
-            ).first()
-            if obj and obj not in target_list: target_list.append(obj)
-
-        robust_link(rule_req.source_ip, synced_rule.sources)
-        robust_link(rule_req.destination_ip, synced_rule.destinations)
-        
-        svc_obj = ServiceObject.query.filter(func.lower(ServiceObject.name) == svc_name.lower()).first()
-        if svc_obj and svc_obj not in synced_rule.services: synced_rule.services.append(svc_obj)
-
-        # 5. סגירת בקשה ורישום
+        # 4. סגירת בקשה ורישום Audit Log מפורט (תיקון ה-None)
         rule_req.status = 'Approved'
         rule_req.processed_by = get_username()
-        db_sql.session.add(AuditLog(user=get_username(), action="APPROVE_RULE", resource_name=final_rule_name))
+        
+        audit_entry = AuditLog(
+            user=get_username(),
+            action="APPROVE_RULE",
+            resource_type="Security Rule",
+            resource_name=final_rule_name,
+            details=f"Source: {rule_req.source_ip}, Dest: {rule_req.destination_ip}, Service: {svc_name}"
+        )
+        db_sql.session.add(audit_entry)
         
         db_sql.session.commit()
         return jsonify({"status": "success", "message": f"חוקה {final_rule_name} אושרה ונוצרה"})
@@ -296,20 +283,37 @@ def approve_single_rule(rule_id: int):
         db_sql.session.rollback()
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
-
+    
 @rules_bp.route('/reject-single-rule/<int:rule_id>', methods=['POST'])
 def reject_single_rule(rule_id: int):
-    """דחיית בקשת חוקה עם סיבה."""
+    """דחיית בקשת חוקה עם הוספת תיעוד ל-Audit Log."""
     if not is_admin_check(): return jsonify({"status": "error"}), 403
-    rule_req = RuleRequest.query.get(rule_id)
-    if rule_req:
+    
+    rule_req = RuleRequest.query.get_or_404(rule_id)
+    reason = request.json.get('reason', 'לא צוינה סיבה')
+    
+    try:
         rule_req.status = 'Rejected'
-        rule_req.admin_notes = request.json.get('reason', 'לא צוינה סיבה')
+        rule_req.admin_notes = reason
         rule_req.processed_by = get_username()
+        
+        # הוספת התיעוד שחסר
+        audit_entry = AuditLog(
+            user=get_username(),
+            action="REJECT_RULE",
+            resource_type="Security Rule",
+            resource_name=rule_req.rule_name,
+            details=f"Reason: {reason}"
+        )
+        db_sql.session.add(audit_entry)
+        
         db_sql.session.commit()
         return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 404
-
+    except Exception as e:
+        db_sql.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
+    
 @rules_bp.route('/get-my-requests')
 def get_my_requests():
     """שליפת בקשות עבור המשתמש הנוכחי."""

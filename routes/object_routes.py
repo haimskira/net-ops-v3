@@ -142,7 +142,7 @@ def get_my_objects_status():
 def approve_object(obj_id: int):
     """
     מאשר אובייקט ויוצר אותו פיזית בפיירוול.
-    תיקון: שימוש בפרמטר 'value' במקום 'static_value' עבור PanServiceGroup.
+    תיקון: הוספת תיעוד Audit Log מלא (Resource Type ו-Details) למניעת ערכי None.
     """
     if not is_admin_check(): 
         return jsonify({"status": "error", "message": "Unauthorized"}), 403
@@ -164,7 +164,6 @@ def approve_object(obj_id: int):
 
         elif t == 'address-group':
             members = [m.strip() for m in v.split(',') if m.strip()]
-            # ב-AddressGroup הפרמטר הוא static_value
             new_pan_obj = PanAddressGroup(name=n, static_value=members)
             if not AddressObject.query.filter_by(name=n).first():
                 db_sql.session.add(AddressObject(name=n, type='group', is_group=True))
@@ -180,7 +179,6 @@ def approve_object(obj_id: int):
             if not members:
                 return jsonify({"status": "error", "message": "קבוצת שירותים לא יכולה להיות ריקה"}), 400
             
-            # תיקון קריטי: ב-ServiceGroup הפרמטר נקרא value ולא static_value
             new_pan_obj = PanServiceGroup(name=n, value=members)
             
             if not ServiceObject.query.filter_by(name=n).first():
@@ -196,11 +194,30 @@ def approve_object(obj_id: int):
                 db_sql.session.rollback()
                 return jsonify({"status": "error", "message": f"שגיאת פיירוול: {str(xapi_err)}"}), 400
 
+        # עדכון סטטוס הבקשה
         obj_req.status = 'Approved'
         obj_req.processed_by = get_username()
-        db_sql.session.add(AuditLog(user=get_username(), action="APPROVE_OBJECT", resource_name=n, details=f"Type: {t}, Value: {v}"))
-        db_sql.session.commit()
+
+        # קביעת סוג המשאב עבור ה-Audit Log בצורה ברורה (מניעת None)
+        type_labels = {
+            'address': 'Address Object',
+            'address-group': 'Address Group',
+            'service': 'Service Object',
+            'service-group': 'Service Group'
+        }
+        res_type = type_labels.get(t, "Infrastructure Object")
+
+        # הוספת רשומה ל-Audit Log עם כל השדות הנדרשים
+        audit_entry = AuditLog(
+            user=get_username(),
+            action="APPROVE_OBJECT",
+            resource_type=res_type,
+            resource_name=n,
+            details=f"Object Type: {t}, Value/Members: {v}"
+        )
+        db_sql.session.add(audit_entry)
         
+        db_sql.session.commit()
         return jsonify({"status": "success", "message": f"האובייקט {n} נוצר בהצלחה."})
 
     except Exception as e:
@@ -209,6 +226,7 @@ def approve_object(obj_id: int):
         db_sql.session.rollback()
         return jsonify({"status": "error", "message": f"שגיאת מערכת: {str(e)}"}), 500
     
+        
 @objects_bp.route('/reject-object/<int:obj_id>', methods=['POST'])
 def reject_object(obj_id: int):
     """דחיית בקשת אובייקט."""
