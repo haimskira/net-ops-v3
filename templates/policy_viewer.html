@@ -61,7 +61,10 @@
         .obj-group { border-right-color: #6366f1; }
         .obj-host { border-right-color: #10b981; }
         .obj-name { font-size: 11px; font-weight: bold; color: #f1f5f9; }
-        .badge-allow { color: #10b981; border: 1px solid #10b981; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; }
+        
+        /* סטטוסים צבעוניים */
+        .badge-allow { color: #10b981; border: 1px solid #10b981; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+        .badge-deny { color: #ef4444; border: 1px solid #ef4444; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
     </style>
 </head>
 <body class="flex flex-col h-screen">
@@ -142,23 +145,27 @@
         function renderTable(policies) {
             const body = document.getElementById('policy-body');
             document.getElementById('row-count').innerText = `${policies.length} חוקים`;
-            body.innerHTML = policies.map(p => `
-                <tr>
-                    <td class="p-4 font-bold text-indigo-300 truncate max-w-xs">${p.name}</td>
-                    <td class="p-4 text-slate-400">${p.from}</td>
-                    <td class="p-4 text-slate-400">${p.to}</td>
-                    <td class="p-2">${renderTags(p.sources)}</td>
-                    <td class="p-2">${renderTags(p.destinations)}</td>
-                    <td class="p-2">${renderTags(p.services, true)}</td>
-                    <td class="p-4 text-center"><span class="badge-allow">${p.action}</span></td>
-                </tr>
-            `).join('');
+            body.innerHTML = policies.map(p => {
+                // בחירת מחלקה עיצובית לפי ה-Action
+                const actionClass = (p.action.toLowerCase() === 'allow') ? 'badge-allow' : 'badge-deny';
+                
+                return `
+                    <tr>
+                        <td class="p-4 font-bold text-indigo-300 truncate max-w-xs">${p.name}</td>
+                        <td class="p-4 text-slate-400">${p.from}</td>
+                        <td class="p-4 text-slate-400">${p.to}</td>
+                        <td class="p-2">${renderTags(p.sources)}</td>
+                        <td class="p-2">${renderTags(p.destinations)}</td>
+                        <td class="p-2">${renderTags(p.services, true)}</td>
+                        <td class="p-4 text-center"><span class="${actionClass}">${p.action}</span></td>
+                    </tr>
+                `;
+            }).join('');
         }
 
         function renderTags(objs, isSvc = false) {
             return `<div class="flex flex-wrap gap-1">` + objs.map(o => {
                 const typeClass = o.is_group ? 'obj-group' : 'obj-host';
-                // שימוש ב-data-tooltip במקום title בשביל ה-CSS Tooltip המהיר
                 const tooltipText = o.value || 'מידע לא זמין';
                 return `<div class="obj-tag ${typeClass}" data-tooltip="תוכן: ${tooltipText}"><span class="obj-name">${o.name}</span></div>`;
             }).join('') + `</div>`;
